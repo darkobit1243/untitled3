@@ -36,9 +36,20 @@ dependencies:
   firebase_storage: ^13.0.4    # Storage
   google_maps_flutter: ^2.14.0 # Harita
   image_picker: ^1.2.1         # Kamera / galeri erişimi
-  flutter_riverpod: ^3.0.3      # State management
+  flutter_riverpod: ^3.0.3     # State management
   uuid: ^4.5.2                 # Benzersiz ID üretimi
   intl: ^0.20.2                # Uluslararasılaştırma / tarih-sayı formatlama
+  # TrustShip UI & backend entegrasyonu için ek paketler
+  flutter_svg: ^2.0.9
+  camera: ^0.10.5
+  geolocator: ^10.1.0
+  http: ^1.1.0
+  dio: ^5.4.0
+  shared_preferences: ^2.2.2
+  lottie: ^2.7.0
+  flutter_chat_ui: ^1.6.10
+  pin_code_fields: ^8.0.1
+  flutter_countdown_timer: ^4.1.0
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8

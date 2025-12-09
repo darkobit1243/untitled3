@@ -27,7 +27,9 @@ class _HomeScreenState extends State<HomeScreen> {
           // Katman 1: Harita
           GoogleMap(
             initialCameraPosition: _initialPosition,
-            myLocationEnabled: true, // Konum izni gerek
+            // Konum izinleri ve runtime permission akışı eklenene kadar
+            // çökme riskini azaltmak için myLocationEnabled'i geçici olarak kapattık.
+            myLocationEnabled: false,
             zoomControlsEnabled: false,
             onMapCreated: (GoogleMapController controller) {
               // Harita yüklendiğinde yapılacaklar
