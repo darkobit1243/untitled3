@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
 
-class MyShipmentsScreen extends StatelessWidget {
-  const MyShipmentsScreen({super.key});
+/// Tek bir kargoya ait detay ekranı için placeholder.
+///
+/// Şu an projede kullanılmıyor ama gelecekte bir gönderinin
+/// durumunu / hareketlerini göstermek için genişletilebilir.
+class MyShipmentScreen extends StatelessWidget {
+  const MyShipmentScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Kargo Hareketleri")),
-      body: const Center(child: Text("Aktif ve Geçmiş Kargolar Listesi")),
+      appBar: AppBar(title: const Text('Kargo Detayı')),
+      body: const Center(child: Text('Kargo detayı ekranı (yakında).')),
     );
   }
 }

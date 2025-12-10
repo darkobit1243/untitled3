@@ -4,9 +4,9 @@ import '../services/api_client.dart';
 import '../theme/trustship_theme.dart';
 import 'create_shipment_screen.dart';
 import 'deal_details_screen.dart';
-import 'my_shipment_screen.dart';
 import 'my_shipments_screen.dart';
 import 'profile_screen.dart';
+import 'carrier_deliveries_screen.dart';
 
 enum DashboardMode { sender, carrier }
 
@@ -18,15 +18,22 @@ class MainDashboardScreen extends StatefulWidget {
 }
 
 class _MainDashboardScreenState extends State<MainDashboardScreen> {
-  final ApiClient _api = ApiClient();
   DashboardMode _mode = DashboardMode.sender;
   Future<List<dynamic>>? _listingsFuture;
 
   @override
   void initState() {
     super.initState();
-    // TODO: Giriş akışı eklendiğinde gerçek token ile login yapılacak.
-    _listingsFuture = _api.fetchListings();
+    _listingsFuture = apiClient.fetchListings();
+    _loadPreferredRole();
+  }
+
+  Future<void> _loadPreferredRole() async {
+    final role = await apiClient.getPreferredRole();
+    if (!mounted) return;
+    setState(() {
+      _mode = role == 'carrier' ? DashboardMode.carrier : DashboardMode.sender;
+    });
   }
 
   @override
@@ -38,14 +45,16 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
           children: [
             Icon(Icons.local_shipping, color: TrustShipColors.primaryRed),
             const SizedBox(width: 8),
-            const Text('TrustShip'),
+            const Text(
+              'TrustShip',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
           ],
         ),
         actions: [
           IconButton(
             icon: const Icon(Icons.notifications_none),
             onPressed: () {
-              // Şimdilik placeholder: bildirimin olmadığı basit bir dialog.
               showDialog<void>(
                 context: context,
                 builder: (_) => AlertDialog(
@@ -88,9 +97,60 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                   return const Center(child: CircularProgressIndicator());
                 }
                 if (snapshot.hasError) {
-                  return Center(child: Text('İlanlar yüklenemedi: ${snapshot.error}'));
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24.0),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.cloud_off, size: 48, color: Colors.grey),
+                          const SizedBox(height: 12),
+                          const Text(
+                            'İlanlar yüklenemedi.',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              color: TrustShipColors.textDarkGrey,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '${snapshot.error}',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: Colors.grey, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
                 }
                 final listings = snapshot.data ?? [];
+                if (listings.isEmpty) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24.0),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: const [
+                          Icon(Icons.inbox_outlined, size: 48, color: Colors.grey),
+                          SizedBox(height: 12),
+                          Text(
+                            'Henüz hiç ilan yok.',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              color: TrustShipColors.textDarkGrey,
+                            ),
+                          ),
+                          SizedBox(height: 4),
+                          Text(
+                            'Yeni bir gönderi oluştur veya taşıyıcı modunda iş ara.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: Colors.grey, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
                 if (_mode == DashboardMode.sender) {
                   return _SenderView(listings: listings);
                 } else {
@@ -121,6 +181,7 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Container(
+        padding: const EdgeInsets.all(4),
         decoration: BoxDecoration(
           color: TrustShipColors.backgroundGrey,
           borderRadius: BorderRadius.circular(24),
@@ -133,6 +194,7 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                 selected: _mode == DashboardMode.sender,
                 onTap: () {
                   setState(() => _mode = DashboardMode.sender);
+                  apiClient.setPreferredRole('sender');
                 },
               ),
             ),
@@ -142,6 +204,7 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                 selected: _mode == DashboardMode.carrier,
                 onTap: () {
                   setState(() => _mode = DashboardMode.carrier);
+                  apiClient.setPreferredRole('carrier');
                 },
               ),
             ),
@@ -245,6 +308,7 @@ class _ShipmentCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final title = listing['title'] as String? ?? 'Gönderi';
+    final description = listing['description'] as String? ?? '';
 
     return GestureDetector(
       onTap: () {
@@ -290,6 +354,15 @@ class _ShipmentCard extends StatelessWidget {
                       color: TrustShipColors.textDarkGrey,
                     ),
                   ),
+                  if (description.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      description,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Colors.grey, fontSize: 12),
+                    ),
+                  ],
                   const SizedBox(height: 4),
                   const Text(
                     'Taşıyıcı: Aranıyor...',
@@ -299,13 +372,13 @@ class _ShipmentCard extends StatelessWidget {
               ),
             ),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
                 color: TrustShipColors.warningOrange.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(999),
               ),
               child: const Text(
-                'Taşıyıcı Aranıyor',
+                'Taşıyıcı aranıyor',
                 style: TextStyle(
                   color: TrustShipColors.warningOrange,
                   fontSize: 11,
@@ -338,7 +411,7 @@ class _CarrierView extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         const Text(
-          'Rotanızdaki Uygun İşler',
+          'Rotanızdaki uygun işler',
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
@@ -471,6 +544,18 @@ class _MainMenuSheet extends StatelessWidget {
                 Navigator.of(context).push(
                   MaterialPageRoute<void>(
                     builder: (_) => const MyShipmentsScreen(),
+                  ),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.route_outlined),
+              title: const Text('Teslimatlarım (taşıyıcı)'),
+              onTap: () {
+                Navigator.of(context).pop();
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const CarrierDeliveriesScreen(),
                   ),
                 );
               },
