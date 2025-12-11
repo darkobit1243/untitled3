@@ -10,18 +10,10 @@ class ApiClient {
 
   final http.Client _client;
 
-  /// Ortama göre backend base URL'si.
+  /// Production backend base URL (Railway).
   ///
-  /// - Android emülatör: 10.0.2.2
-  /// - iOS simülatör / web: localhost
-  /// - Fiziksel cihazda çalıştırıyorsan: bunu makinenin yerel IP'siyle
-  ///   (ör: http://192.168.1.42:3000) değiştirmelisin.
-  String get _baseUrl {
-    if (Platform.isAndroid) {
-      return 'http://10.0.2.2:3000';
-    }
-    return 'http://localhost:3000';
-  }
+  /// Tüm platformlarda aynı URL'yi kullanıyoruz.
+  String get _baseUrl => 'https://kargo-backend-production.up.railway.app';
 
   String? _jwt;
   String? _userId;
