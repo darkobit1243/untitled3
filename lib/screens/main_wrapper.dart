@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import '../services/api_client.dart';
-import 'home_screen.dart'; // Birazdan oluşturacağız
-import 'my_shipments_screen.dart'; // Birazdan oluşturacağız
-import 'profile_screen.dart'; // Birazdan oluşturacağız
+import 'home_screen.dart';
+import 'my_shipments_screen.dart';
+import 'profile_screen.dart';
 import 'carrier_deliveries_screen.dart';
+import 'messages_screen.dart';
 
 class MainWrapper extends StatefulWidget {
   const MainWrapper({super.key});
@@ -42,7 +43,7 @@ class _MainWrapperState extends State<MainWrapper> {
     final pages = <Widget>[
       HomeScreen(role: isCarrier ? 'carrier' : 'sender'),
       isCarrier ? const CarrierDeliveriesScreen() : const MyShipmentsScreen(),
-      const Center(child: Text("Mesajlar (Yakında)")),
+      const MessagesScreen(),
       const ProfileScreen(),
     ];
 

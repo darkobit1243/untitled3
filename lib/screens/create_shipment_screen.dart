@@ -40,7 +40,6 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
 
   // Google Maps & Places state
   final Dio _dio = Dio();
-  CancelToken? _placesCancelToken;
   GoogleMapController? _mapController;
   LatLng? _currentLocation;
   LatLng? _pickupLocation;

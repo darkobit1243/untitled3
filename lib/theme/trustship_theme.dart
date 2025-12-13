@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 /// TrustShip ana renk paleti ve ortak stiller.
 class TrustShipColors {
   static const primaryRed = Color(0xFFE63946);
+  static const primaryBlue = Color(0xFF4A6DFF);
   static const secondaryWhite = Color(0xFFFFFFFF);
   static const textDarkGrey = Color(0xFF2B2D42);
   static const successGreen = Color(0xFF2A9D8F);

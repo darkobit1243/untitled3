@@ -11,6 +11,8 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../services/api_client.dart';
 import '../theme/trustship_theme.dart';
 import 'create_shipment_screen.dart';
+import 'ilanlar_screen.dart';
+import 'teklif_listesi_sheet.dart';
 
 // REST (Places / Directions) için özel key (yalnızca HTTP istekleri için)
 const String _googleApiKey = 'AIzaSyBJu0tWf3dKoJV6m5r_tp02sOYSOUpgCV0';
@@ -28,17 +30,36 @@ class _HomeScreenState extends State<HomeScreen> {
   final Dio _dio = Dio();
   CancelToken? _placesCancelToken;
 
+  bool _showNearbyCard = true;
+
   // Listings
   List<dynamic> _listings = [];
   bool _isLoading = false;
+  List<dynamic> _senderActiveListings = [];
+  List<Map<String, dynamic>> _nearestListings = [];
 
   // Google Maps state
   GoogleMapController? _mapController;
   final Set<Marker> _markers = {};
   final Set<Polyline> _polylines = {};
+  Widget _chip(String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(fontSize: 12, color: Colors.black87, fontWeight: FontWeight.w600),
+      ),
+    );
+  }
   String? _selectedAddress;
   LatLng? _currentLocation;
   int? _senderListingCount;
+  int? _senderPendingOffersCount;
   int? _carrierDeliveryCount;
   bool _roleSummaryLoading = false;
   String? _roleSummaryError;
@@ -61,6 +82,9 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _initCurrentLocation());
     _loadRoleData();
+    if (widget.role != 'carrier') {
+      _loadListings();
+    }
   }
 
   @override
@@ -74,207 +98,13 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final isCarrier = widget.role == 'carrier';
+    // Güvenlik kontrolü: Eğer kullanıcı sender ise hiçbir şekilde carrier view görmemeli
+    final actualIsCarrier = isCarrier;
     return Scaffold(
-      // Harita tam ekran olacak, Stack ile butonları üzerine koyacağız
-      body: Stack(
-        children: [
-          // Katman 1: Harita
-          GoogleMap(
-            initialCameraPosition: _initialPosition,
-            myLocationEnabled: _currentLocation != null,
-            zoomControlsEnabled: false,
-            markers: _markers,
-            polylines: _polylines,
-            onMapCreated: (GoogleMapController controller) {
-              _mapController = controller;
-              // Konum daha önce alındıysa kamerayı oraya al.
-              if (_currentLocation != null) {
-                _mapController!.animateCamera(
-                  CameraUpdate.newCameraPosition(
-                    CameraPosition(target: _currentLocation!, zoom: 12),
-                  ),
-                );
-              }
-            },
-            onTap: _onMapTap,
-          ),
-
-          // Katman 2: Alt Kısımdaki Action Butonları
-          Positioned(
-            bottom: 20,
-            left: 20,
-            right: 20,
-            child: Card(
-              elevation: 8,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12),
-                child: Row(
-                  children: [
-                    if (!isCarrier) ...[
-                      Expanded(
-                        child: _buildActionButton(
-                          context,
-                          icon: Icons.local_post_office_outlined,
-                          label: 'Kargo\nGönder',
-                          color: TrustShipColors.primaryRed,
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(builder: (context) => const CreateShipmentScreen()),
-                            );
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                    ],
-                    Expanded(
-                      child: _buildActionButton(
-                        context,
-                        icon: Icons.directions_car,
-                        label: 'Rota\nBul',
-                        color: TrustShipColors.successGreen,
-                        onTap: () async {
-                          // Şimdilik seçili nokta ile başlangıç noktası arasında rota çiz.
-                          if (_markers.isNotEmpty) {
-                            final dest = _markers.last.position;
-                            await _drawRoute(_initialPosition.target, dest);
-                          } else {
-                            if (!mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Önce haritada bir adres seç.')),
-                            );
-                          }
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-
-          Positioned(
-            bottom: 160,
-            left: 20,
-            right: 20,
-            child: _buildRoleListCard(),
-          ),
-
-          // Katman 3: Üst Arama Çubuğu + adres autocomplete
-          Positioned(
-            top: 50,
-            left: 20,
-            right: 20,
-            child: Column(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 15),
-                  height: 52,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(26),
-                    boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10)],
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.search, color: Colors.grey),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: TextField(
-                          controller: _searchController,
-                          decoration: const InputDecoration(
-                            hintText: 'Adres veya yer ara...',
-                            border: InputBorder.none,
-                          ),
-                          onChanged: _onSearchChanged,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                  const SizedBox(height: 12),
-                  _buildRoleSummaryCard(),
-                if (_placePredictions.isNotEmpty)
-                  Container(
-                    margin: const EdgeInsets.only(top: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10)],
-                    ),
-                    constraints: const BoxConstraints(maxHeight: 220),
-                    child: ListView.separated(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      shrinkWrap: true,
-                      itemCount: _placePredictions.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1),
-                      itemBuilder: (context, index) {
-                        final item = _placePredictions[index] as Map<String, dynamic>;
-                        final description = item['description']?.toString() ?? '';
-                        return ListTile(
-                          leading: const Icon(Icons.location_on_outlined, color: Colors.redAccent),
-                          title: Text(
-                            description,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          onTap: () {
-                            final placeId = item['place_id']?.toString();
-                            if (placeId != null) {
-                              _onPlaceSelected(placeId, description);
-                            }
-                          },
-                        );
-                      },
-                    ),
-                  ),
-              ],
-            ),
-          ),
-
-          // Katman 4: Sağ altta ilan listesi kısayolu
-          Positioned(
-            right: 16,
-            bottom: 140,
-            child: FloatingActionButton.extended(
-              onPressed: _openListingsBottomSheet,
-              icon: const Icon(Icons.list_alt),
-              label: const Text('İlanlar'),
-            ),
-          ),
-
-          // Katman 5: Seçilen adres bilgi çipi (Geocoding sonucu)
-          if (_selectedAddress != null)
-            Positioned(
-              left: 20,
-              right: 20,
-              bottom: 110,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 8)],
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.place, color: TrustShipColors.primaryRed, size: 20),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _selectedAddress!,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 13),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-        ],
-      ),
+      body: actualIsCarrier ? _buildCarrierBody() : _buildSenderBody(context),
+      floatingActionButton: isCarrier ? null : _buildSenderFab(),
+      floatingActionButtonLocation:
+          isCarrier ? FloatingActionButtonLocation.endFloat : FloatingActionButtonLocation.centerDocked,
     );
   }
 
@@ -284,8 +114,11 @@ class _HomeScreenState extends State<HomeScreen> {
     });
     try {
       final data = await apiClient.fetchListings();
+      final nearest = await _getNearestListings();
       setState(() {
         _listings = data;
+        _senderActiveListings = data.take(5).toList();
+        _nearestListings = nearest;
       });
     } catch (_) {
       if (!mounted) return;
@@ -399,9 +232,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       const SizedBox(width: 8),
                       TextButton.icon(
-                        onPressed: listingId.isEmpty ? null : () => _showOfferDialog(listingId, title),
+                        onPressed: listingId.isEmpty ? null : () => _openOffersSheet(listingId, title),
                         icon: const Icon(Icons.local_offer, size: 18),
-                        label: const Text('Teklif ver'),
+                        label: const Text('Teklifleri Gör'),
                       ),
                     ],
                   ),
@@ -423,7 +256,8 @@ class _HomeScreenState extends State<HomeScreen> {
     } else if (_roleSummaryError != null) {
       subtitle = _roleSummaryError!;
     } else if (isSender) {
-      subtitle = '${_senderListingCount ?? 0} ilan';
+      final offersTxt = _senderPendingOffersCount != null ? ' • ${_senderPendingOffersCount} bekleyen teklif' : '';
+      subtitle = '${_senderListingCount ?? 0} ilan$offersTxt';
     } else {
       subtitle = '${_carrierDeliveryCount ?? 0} teslimat';
     }
@@ -470,65 +304,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildRoleListCard() {
-    final entries = widget.role == 'sender' ? _senderListings : _carrierDeliveries;
-    if (entries.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    final isSender = widget.role == 'sender';
-    final title = isSender ? 'Aktif İlanlar' : 'Görevlerim';
-    final subtitle = isSender ? 'Yayınlanmış ilanlar' : 'Taahhüt edilen teslimatlar';
-
-    return Card(
-      elevation: 6,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-                const Spacer(),
-                Text(subtitle, style: const TextStyle(color: Colors.grey, fontSize: 12)),
-              ],
-            ),
-            const SizedBox(height: 6),
-            ...entries.take(3).map(
-              (item) {
-                final label = isSender
-                    ? item['title']?.toString() ?? 'İsim yok'
-                    : item['listing']?['title']?.toString() ?? 'Teslimat';
-                final meta = isSender
-                    ? '${item['weight'] ?? '-'} kg · ${item['pickup_location']?['lat']?.toStringAsFixed(2) ?? '?'}'
-                    : 'Durum: ${item['status'] ?? 'beklemede'}';
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          label,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(meta, style: const TextStyle(fontSize: 11, color: Colors.black54)),
-                    ],
-                  ),
-                );
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Future<void> _loadRoleData() async {
     if (_roleSummaryLoading) return;
     setState(() {
@@ -539,9 +314,12 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       if (widget.role == 'sender') {
         final listings = await apiClient.fetchMyListings();
+        final offers = await apiClient.fetchOffersByOwner();
+        final pending = offers.where((o) => (o['status']?.toString() ?? '') == 'pending').length;
         if (!mounted) return;
         setState(() {
           _senderListingCount = listings.length;
+          _senderPendingOffersCount = pending;
           _senderListings
             ..clear()
             ..addAll(listings);
@@ -569,6 +347,511 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Widget _buildSearchAndSummaryCard(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 16)],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildRoleSummaryCard(),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.grey.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.search, color: Colors.grey),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: TextField(
+                    controller: _searchController,
+                    decoration: const InputDecoration(
+                      hintText: 'Adres veya yer ara...',
+                      border: InputBorder.none,
+                    ),
+                    onChanged: _onSearchChanged,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPredictionList() {
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10)],
+      ),
+      constraints: const BoxConstraints(maxHeight: 220),
+      child: ListView.separated(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        shrinkWrap: true,
+        itemCount: _placePredictions.length,
+        separatorBuilder: (_, __) => const Divider(height: 1),
+        itemBuilder: (context, index) {
+          final item = _placePredictions[index] as Map<String, dynamic>;
+          final description = item['description']?.toString() ?? '';
+          return ListTile(
+            leading: const Icon(Icons.location_on_outlined, color: Colors.redAccent),
+            title: Text(
+              description,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            onTap: () {
+              final placeId = item['place_id']?.toString();
+              if (placeId != null) {
+                _onPlaceSelected(placeId, description);
+              }
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildNearbyListings(List<Map<String, dynamic>> listings) {
+    if (listings.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      height: 250,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 16, offset: const Offset(0, 8)),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+            child: Row(
+              children: [
+                const Text(
+                  'Yakın İlanlar',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                ),
+                const Spacer(),
+                IconButton(
+                  icon: const Icon(Icons.close, size: 20),
+                  onPressed: () => setState(() => _showNearbyCard = false),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: ListView.separated(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              scrollDirection: Axis.horizontal,
+              itemCount: listings.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 12),
+              itemBuilder: (context, index) {
+                final item = listings[index];
+                final pickup = item['pickup_location']?['address']?.toString() ?? '?';
+                final dropoff = item['dropoff_location']?['address']?.toString() ?? '?';
+                final distance = (item['__distance'] as double?)?.toStringAsFixed(1) ?? '?';
+                final title = item['title']?.toString() ?? 'İlan';
+                final price = item['price']?.toString() ?? 'Teklif yok';
+                final weight = item['weight']?.toString() ?? '-';
+
+                return Container(
+                  width: 230,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(18),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.04),
+                        blurRadius: 12,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          const Icon(Icons.my_location, size: 14, color: Colors.grey),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              pickup,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 12, color: Colors.grey),
+                            ),
+                          ),
+                        ],
+                      ),
+                      Row(
+                        children: [
+                          const Icon(Icons.place, size: 14, color: Colors.grey),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              dropoff,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 12, color: Colors.grey),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const Spacer(),
+                      Row(
+                        children: [
+                          _chip('$weight kg'),
+                          const SizedBox(width: 6),
+                          _chip('$distance km'),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(price, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                      const SizedBox(height: 10),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          OutlinedButton.icon(
+                            onPressed: () {},
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                              side: BorderSide(color: Colors.grey.shade300),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            icon: const Icon(Icons.info_outline, size: 16, color: Colors.black54),
+                            label: const Text('Detay', style: TextStyle(color: Colors.black87, fontSize: 12)),
+                          ),
+                          ElevatedButton(
+                            onPressed: () async {
+                              final currentUserId = await apiClient.getCurrentUserId();
+                              final listingOwnerId = item['ownerId']?.toString();
+                              if (currentUserId == listingOwnerId) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Kendi ilanınıza teklif veremezsiniz.')),
+                                );
+                                return;
+                              }
+                              _showOfferDialog(item['id']?.toString() ?? '', title);
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: TrustShipColors.primaryRed,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            ),
+                            child: const Text('Teklif Ver'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCarrierBody() {
+    return Stack(
+      children: [
+        GoogleMap(
+          initialCameraPosition: _initialPosition,
+          myLocationEnabled: _currentLocation != null,
+          zoomControlsEnabled: false,
+          markers: _markers,
+          polylines: _polylines,
+          onMapCreated: (controller) => _mapController = controller,
+          onTap: _onMapTap,
+        ),
+        Positioned(
+          top: 40,
+          left: 20,
+          right: 20,
+          child: Column(
+            children: [
+              _buildSearchAndSummaryCard(context),
+              if (_placePredictions.isNotEmpty) _buildPredictionList(),
+            ],
+          ),
+        ),
+        if (_showNearbyCard)
+          Positioned(
+            bottom: 150,
+            left: 20,
+            right: 20,
+            child: _buildNearbyListings(_nearestListings),
+          ),
+        Positioned(
+          bottom: 90,
+          right: 16,
+          child: _buildActionButton(
+            context,
+            icon: Icons.directions_car,
+            label: 'Rota\nBul',
+            color: TrustShipColors.successGreen,
+            onTap: () {
+              if (_markers.isNotEmpty) {
+                final dest = _markers.last.position;
+                _drawRoute(_initialPosition.target, dest);
+              }
+            },
+          ),
+        ),
+        Positioned(
+          bottom: 20,
+          right: 16,
+          child: Row(
+            children: [
+              FloatingActionButton(
+                onPressed: _goToCurrentLocation,
+                backgroundColor: Colors.white,
+                child: const Icon(Icons.my_location, color: TrustShipColors.primaryRed),
+              ),
+              const SizedBox(width: 10),
+              FloatingActionButton.extended(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const IlanlarScreen()),
+                  );
+                },
+                backgroundColor: TrustShipColors.primaryRed,
+                icon: const Icon(Icons.list_alt),
+                label: const Text('İlanlar'),
+              ),
+            ],
+          ),
+        ),
+        if (_selectedAddress != null)
+          Positioned(
+            bottom: 140,
+            left: 20,
+            right: 20,
+            child: _buildSelectedAddressChip(),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildSenderBody(BuildContext context) {
+    return SafeArea(
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(22),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 14),
+                ],
+              ),
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Gönderici Paneli', style: TextStyle(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Güncel Durum: ${_senderActiveListings.length} Teklif Bekleyen · ${_carrierDeliveryCount ?? 0} Yoldaki Gönderi',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildSearchAndSummaryCard(context),
+                ],
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: SizedBox(
+                height: 180,
+                child: GoogleMap(
+                  initialCameraPosition: _initialPosition,
+                  markers: _markers,
+                  zoomControlsEnabled: false,
+                  myLocationEnabled: _currentLocation != null,
+                  onMapCreated: (controller) => _mapController = controller,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: _senderActiveListings.length,
+              itemBuilder: (context, index) {
+                final listing = _senderActiveListings[index] as Map<String, dynamic>;
+                final title = listing['title']?.toString() ?? 'Başlık yok';
+                final pickup = listing['pickup_location']?['lat']?.toStringAsFixed(2) ?? '?';
+                final dropoff = listing['dropoff_location']?['lat']?.toStringAsFixed(2) ?? '?';
+                final weight = listing['weight']?.toString() ?? '-';
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Card(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                    elevation: 4,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: TrustShipColors.primaryRed.withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Text('Teklif Bekliyor', style: const TextStyle(color: TrustShipColors.primaryRed)),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Text('Pickup: $pickup · Drop: $dropoff', style: const TextStyle(color: Colors.grey)),
+                          const SizedBox(height: 6),
+                          Text('$weight kg', style: const TextStyle(fontWeight: FontWeight.w600)),
+                          const SizedBox(height: 10),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              TextButton(
+                                onPressed: () => _openListingsBottomSheet(),
+                                child: const Text('Teklifleri Gör'),
+                              ),
+                              ElevatedButton(
+                                onPressed: () {},
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: TrustShipColors.primaryRed,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                ),
+                                child: const Text('Detay'),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSenderFab() {
+    return FloatingActionButton.extended(
+      onPressed: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const CreateShipmentScreen()),
+        );
+      },
+      backgroundColor: TrustShipColors.primaryBlue,
+      icon: const Icon(Icons.add),
+      label: const Text('Yeni Gönderi'),
+    );
+  }
+
+  Widget _buildSelectedAddressChip() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 8)],
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.place, color: TrustShipColors.primaryRed, size: 20),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              _selectedAddress!,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 13),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> _getNearestListings() async {
+    if (_currentLocation == null || _listings.isEmpty) return [];
+    final current = _currentLocation!;
+
+    // Get current user ID to filter out own listings
+    String? currentUserId;
+    try {
+      currentUserId = await apiClient.getCurrentUserId();
+    } catch (_) {
+      // If we can't get user ID, just return empty list for safety
+      return [];
+    }
+
+    final list = List<Map<String, dynamic>>.from(_listings.cast<Map<String, dynamic>>())
+        .where((item) => item['ownerId']?.toString() != currentUserId) // Filter out own listings
+        .toList();
+
+    list.sort((a, b) {
+      final da = _distanceToListing(a, current);
+      final db = _distanceToListing(b, current);
+      return da.compareTo(db);
+    });
+    return list.take(5).map((item) {
+      final copy = Map<String, dynamic>.from(item);
+      copy['__distance'] = _distanceToListing(item, current);
+      return copy;
+    }).toList();
+  }
+
+  double _distanceToListing(Map<String, dynamic> item, LatLng base) {
+    final pickup = item['pickup_location'] as Map<String, dynamic>?;
+    if (pickup == null) return double.infinity;
+    final lat = (pickup['lat'] as num?)?.toDouble() ?? base.latitude;
+    final lng = (pickup['lng'] as num?)?.toDouble() ?? base.longitude;
+    return Geolocator.distanceBetween(base.latitude, base.longitude, lat, lng) / 1000;
+  }
   // --- Google Places & Directions helpers ---
   // Map'e tıklayınca: marker koy + Geocoding API ile adres bul.
   Future<void> _onMapTap(LatLng position) async {
@@ -773,6 +1056,18 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _goToCurrentLocation() async {
+    if (_currentLocation == null) {
+      await _initCurrentLocation();
+      return;
+    }
+    _mapController?.animateCamera(
+      CameraUpdate.newCameraPosition(
+        CameraPosition(target: _currentLocation!, zoom: 14),
+      ),
+    );
+  }
+
   /// Geocoding API: Koordinattan insan okunur adres üret.
   Future<String?> _reverseGeocode(LatLng position) async {
     try {
@@ -868,6 +1163,21 @@ class _HomeScreenState extends State<HomeScreen> {
                   return;
                 }
 
+                // Check if user is trying to offer on their own listing
+                final currentUserId = await apiClient.getCurrentUserId();
+                final listing = _listings.firstWhere(
+                  (item) => item['id']?.toString() == listingId,
+                  orElse: () => null,
+                );
+                final listingOwnerId = listing?['ownerId']?.toString();
+
+                if (currentUserId == listingOwnerId) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Kendi ilanınıza teklif veremezsiniz.')),
+                  );
+                  return;
+                }
+
                 try {
                   await apiClient.createOffer(
                     listingId: listingId,
@@ -878,6 +1188,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     const SnackBar(content: Text('Teklif gönderildi.')),
                   );
                   Navigator.pop(context);
+                  // Refresh listings to update the UI
+                  await _loadListings();
                 } catch (_) {
                   if (!mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -890,6 +1202,17 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         );
       },
+    );
+  }
+
+  void _openOffersSheet(String listingId, String title) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (_) => TeklifListesiSheet(listingId: listingId, title: title),
     );
   }
 

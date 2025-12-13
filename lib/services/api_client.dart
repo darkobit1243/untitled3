@@ -2,12 +2,14 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:socket_io_client/socket_io_client.dart' as IO;
 
 /// Basit kargo-backend HTTP istemcisi.
 class ApiClient {
   ApiClient({http.Client? client}) : _client = client ?? http.Client();
 
   final http.Client _client;
+  bool enableLogging = false;
 
   /// Production backend base URL (Railway).
   ///
@@ -16,7 +18,15 @@ class ApiClient {
 
   String? _jwt;
   String? _userId;
-  String? _role;
+  IO.Socket? _socket;
+  final List<void Function(bool)> _socketStatusListeners = [];
+
+  void _log(String message) {
+    if (enableLogging) {
+      // ignore: avoid_print
+      print(message);
+    }
+  }
 
   void setToken(String token) {
     _jwt = token;
@@ -36,7 +46,6 @@ class ApiClient {
   Future<void> clearToken() async {
     _jwt = null;
     _userId = null;
-    _role = null;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('auth_token');
     await prefs.remove('preferred_role');
@@ -135,11 +144,14 @@ class ApiClient {
       throw Exception('Kullanıcı bilgisi alınamadı: ${resp.body}');
     }
     final data = jsonDecode(resp.body) as Map<String, dynamic>;
-    final id = data['sub'] as String;
+    final idValue = data['sub'] ?? data['id'];
+    if (idValue == null) {
+      throw Exception('Kullanıcı bilgisi eksik');
+    }
+    final id = idValue as String;
     _userId = id;
     final role = data['role'] as String?;
     if (role != null) {
-      _role = role;
       await setPreferredRole(role);
     }
     return id;
@@ -264,6 +276,18 @@ class ApiClient {
     return jsonDecode(resp.body) as List<dynamic>;
   }
 
+  Future<List<dynamic>> fetchOffersByOwner() async {
+    final ownerId = await _getUserIdAndRole();
+    final resp = await _client.get(
+      Uri.parse('$_baseUrl/offers/owner/$ownerId'),
+      headers: _headers(),
+    );
+    if (resp.statusCode >= 400) {
+      throw Exception('Teklifler alınamadı: ${resp.body}');
+    }
+    return jsonDecode(resp.body) as List<dynamic>;
+  }
+
   Future<Map<String, dynamic>> acceptOffer(String offerId) async {
     final resp = await _client.post(
       Uri.parse('$_baseUrl/offers/accept/$offerId'),
@@ -315,6 +339,18 @@ class ApiClient {
     return jsonDecode(resp.body) as List<dynamic>;
   }
 
+  Future<List<dynamic>> fetchSenderDeliveries() async {
+    final ownerId = await _getUserIdAndRole();
+    final resp = await _client.get(
+      Uri.parse('$_baseUrl/deliveries/by-owner/$ownerId'),
+      headers: _headers(),
+    );
+    if (resp.statusCode >= 400) {
+      throw Exception('Teslimatlar alınamadı: ${resp.body}');
+    }
+    return jsonDecode(resp.body) as List<dynamic>;
+  }
+
   Future<Map<String, dynamic>> pickupDelivery(String deliveryId) async {
     await _getUserIdAndRole();
     final resp = await _client.post(
@@ -336,6 +372,128 @@ class ApiClient {
       throw Exception('Teslim etme işlemi başarısız: ${resp.body}');
     }
     return jsonDecode(resp.body) as Map<String, dynamic>;
+  }
+
+  Future<String> getCurrentUserId() async {
+    if (_userId != null) return _userId!;
+    return await _getUserIdAndRole();
+  }
+
+  Future<List<Map<String, dynamic>>> fetchThreads() async {
+    final resp = await _client.get(Uri.parse('$_baseUrl/messages'), headers: _headers());
+    if (resp.statusCode >= 400) {
+      throw Exception('Mesaj dizileri alınamadı: ${resp.body}');
+    }
+    return (jsonDecode(resp.body) as List<dynamic>).cast<Map<String, dynamic>>();
+  }
+
+  Future<List<Map<String, dynamic>>> fetchMessages(String listingId) async {
+    final resp = await _client.get(Uri.parse('$_baseUrl/messages/$listingId'), headers: _headers());
+    if (resp.statusCode >= 400) {
+      throw Exception('Mesajlar alınamadı: ${resp.body}');
+    }
+    return (jsonDecode(resp.body) as List<dynamic>).cast<Map<String, dynamic>>();
+  }
+
+  Future<List<Map<String, dynamic>>> fetchContacts() async {
+    final resp = await _client.get(Uri.parse('$_baseUrl/messages/contacts'), headers: _headers());
+    if (resp.statusCode >= 400) {
+      throw Exception('Kişi listesi alınamadı: ${resp.body}');
+    }
+    return (jsonDecode(resp.body) as List<dynamic>).cast<Map<String, dynamic>>();
+  }
+
+  Future<Map<String, dynamic>> sendMessage({
+    required String listingId,
+    required String content,
+    required String senderId,
+    required String carrierId,
+    required bool fromCarrier,
+  }) async {
+    final resp = await _client.post(
+      Uri.parse('$_baseUrl/messages'),
+      headers: _headers(),
+      body: jsonEncode({
+        'listingId': listingId,
+        'content': content,
+        'senderId': senderId,
+        'carrierId': carrierId,
+        'fromCarrier': fromCarrier,
+      }),
+    );
+    if (resp.statusCode >= 400) {
+      throw Exception('Mesaj gönderilemedi: ${resp.body}');
+    }
+    return jsonDecode(resp.body) as Map<String, dynamic>;
+  }
+
+  void followListingMessages(String listingId, void Function(dynamic) handler) {
+    _ensureMessageSocket();
+    _socket?.on('message_$listingId', handler);
+  }
+
+  void stopFollowingListing(String listingId) {
+    _socket?.off('message_$listingId');
+  }
+
+  void addSocketStatusListener(void Function(bool) listener) {
+    _socketStatusListeners.add(listener);
+  }
+
+  void removeSocketStatusListener(void Function(bool) listener) {
+    _socketStatusListeners.remove(listener);
+  }
+
+  void _notifySocketStatus(bool connected) {
+    for (final l in List.of(_socketStatusListeners)) {
+      l(connected);
+    }
+  }
+
+  bool get isSocketConnected => _socket?.connected == true;
+
+  void _ensureMessageSocket() {
+    if (_socket != null && _socket!.connected) return;
+    _socket = IO.io('https://kargo-backend-production.up.railway.app', <String, dynamic>{
+      'transports': ['websocket'],
+      'autoConnect': false,
+      'extraHeaders': {'Authorization': 'Bearer ${_jwt ?? ''}'},
+      'forceNew': true,
+      'reconnection': true,
+      'reconnectionAttempts': 5,
+      'reconnectionDelay': 1000,
+    });
+
+    _socket?.on('connect', (_) {
+      _log('✅ Socket connected successfully');
+      _notifySocketStatus(true);
+    });
+
+    _socket?.on('disconnect', (_) {
+      _log('❌ Socket disconnected');
+      _notifySocketStatus(false);
+    });
+
+    _socket?.on('connect_error', (error) {
+      _log('❌ Socket connection error: $error');
+      _notifySocketStatus(false);
+    });
+
+    _socket?.on('reconnect', (_) {
+      _log('🔄 Socket reconnected');
+      _notifySocketStatus(true);
+    });
+
+    _socket?.connect();
+
+    // Test connection after 2 seconds
+    Future.delayed(const Duration(seconds: 2), () {
+      if (_socket?.connected == true) {
+        print('✅ Socket is connected and ready');
+      } else {
+        print('❌ Socket failed to connect');
+      }
+    });
   }
 }
 
