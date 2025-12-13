@@ -10,10 +10,10 @@
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
 
-        <!-- Google Maps API anahtarın -->
+        <!-- Google Maps / Places / Directions API anahtarın -->
         <meta-data
             android:name="com.google.android.geo.API_KEY"
-            android:value="AIzaSyACKfrT2fBhCY-JDThnt3UhzjymGYpzLuA" />
+            android:value="AIzaSyD3GlHayGYsyUgdme6bW_EI4Il4Tdvgaqg" />
 
         <activity
             android:name=".MainActivity"

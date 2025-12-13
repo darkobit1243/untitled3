@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io' show Platform;
 
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -17,6 +16,7 @@ class ApiClient {
 
   String? _jwt;
   String? _userId;
+  String? _role;
 
   void setToken(String token) {
     _jwt = token;
@@ -28,11 +28,18 @@ class ApiClient {
     await prefs.setString('auth_token', token);
   }
 
+  Future<String?> getRole() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('preferred_role');
+  }
+
   Future<void> clearToken() async {
     _jwt = null;
     _userId = null;
+    _role = null;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('auth_token');
+    await prefs.remove('preferred_role');
   }
 
   Map<String, String> _headers() {
@@ -46,15 +53,36 @@ class ApiClient {
   }
 
   // AUTH
-  Future<void> register(String email, String password) async {
+  Future<void> register(String email, String password, {required String role, Map<String, dynamic>? profile}) async {
+    final payload = {
+      'email': email,
+      'password': password,
+      'role': role,
+    };
+    if (profile != null) {
+      for (final entry in profile.entries) {
+        final value = entry.value;
+        if (value == null) continue;
+        if (value is String && value.trim().isEmpty) continue;
+        payload[entry.key] = value;
+      }
+    }
+
     final resp = await _client.post(
       Uri.parse('$_baseUrl/auth/register'),
       headers: _headers(),
-      body: jsonEncode({'email': email, 'password': password}),
+      body: jsonEncode(payload),
     );
     if (resp.statusCode >= 400) {
       throw Exception('Kayıt başarısız: ${resp.body}');
     }
+
+    // Backend artık register'da token + role dönüyor
+    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    final token = data['token'] as String;
+    final r = (data['role'] as String?) ?? role;
+    setToken(token);
+    await setPreferredRole(r);
   }
 
   Future<String> login(String email, String password) async {
@@ -63,12 +91,22 @@ class ApiClient {
       headers: _headers(),
       body: jsonEncode({'email': email, 'password': password}),
     );
+
+    // Debug için response'u logla (sadece geliştirme sırasında işine yarar)
+    // ignore: avoid_print
+    print('LOGIN RESPONSE: ${resp.statusCode} ${resp.body}');
+
     if (resp.statusCode >= 400) {
-      throw Exception('Giriş başarısız: ${resp.body}');
+      throw Exception('Giriş başarısız: ${resp.statusCode} - ${resp.body}');
     }
+
     final data = jsonDecode(resp.body) as Map<String, dynamic>;
     final token = data['token'] as String;
+    final r = data['role'] as String?; // sender|carrier
     setToken(token);
+    if (r != null) {
+      await setPreferredRole(r);
+    }
     return token;
   }
 
@@ -78,7 +116,7 @@ class ApiClient {
     if (token == null) return false;
     _jwt = token;
     try {
-      await _getUserId();
+      await _getUserIdAndRole();
       return true;
     } catch (_) {
       await clearToken();
@@ -86,7 +124,7 @@ class ApiClient {
     }
   }
 
-  Future<String> _getUserId() async {
+  Future<String> _getUserIdAndRole() async {
     if (_userId != null) return _userId!;
 
     final resp = await _client.get(
@@ -99,6 +137,11 @@ class ApiClient {
     final data = jsonDecode(resp.body) as Map<String, dynamic>;
     final id = data['sub'] as String;
     _userId = id;
+    final role = data['role'] as String?;
+    if (role != null) {
+      _role = role;
+      await setPreferredRole(role);
+    }
     return id;
   }
 
@@ -140,8 +183,16 @@ class ApiClient {
     required String title,
     required String description,
     required double weight,
+    double length = 0,
+    double width = 0,
+    double height = 0,
+    bool fragile = false,
+    double pickupLat = 0,
+    double pickupLng = 0,
+    double dropoffLat = 0,
+    double dropoffLng = 0,
   }) async {
-    final ownerId = await _getUserId();
+    await _getUserIdAndRole();
 
     final resp = await _client.post(
       Uri.parse('$_baseUrl/listings'),
@@ -149,13 +200,16 @@ class ApiClient {
       body: jsonEncode({
         'title': title,
         'description': description,
-        'ownerId': ownerId,
         'photos': <String>[],
         'weight': weight,
-        'dimensions': {'length': 0, 'width': 0, 'height': 0},
-        'fragile': false,
-        'pickup_location': {'lat': 0, 'lng': 0},
-        'dropoff_location': {'lat': 0, 'lng': 0},
+        'dimensions': {
+          'length': length,
+          'width': width,
+          'height': height,
+        },
+        'fragile': fragile,
+        'pickup_location': {'lat': pickupLat, 'lng': pickupLng},
+        'dropoff_location': {'lat': dropoffLat, 'lng': dropoffLng},
       }),
     );
     if (resp.statusCode >= 400) {
@@ -169,14 +223,11 @@ class ApiClient {
     required double amount,
     String? message,
   }) async {
-    final userId = await _getUserId();
-
     final resp = await _client.post(
       Uri.parse('$_baseUrl/offers'),
       headers: _headers(),
       body: jsonEncode({
         'listingId': listingId,
-        'proposerId': userId,
         'amount': amount,
         if (message != null) 'message': message,
       }),
@@ -190,7 +241,7 @@ class ApiClient {
   }
 
   Future<List<dynamic>> fetchMyListings() async {
-    final ownerId = await _getUserId();
+    final ownerId = await _getUserIdAndRole();
     final resp = await _client.get(
       Uri.parse('$_baseUrl/listings/owner/$ownerId'),
       headers: _headers(),
@@ -253,7 +304,7 @@ class ApiClient {
   }
 
   Future<List<dynamic>> fetchCarrierDeliveries() async {
-    final carrierId = await _getUserId();
+    final carrierId = await _getUserIdAndRole();
     final resp = await _client.get(
       Uri.parse('$_baseUrl/deliveries/by-carrier/$carrierId'),
       headers: _headers(),
@@ -265,11 +316,10 @@ class ApiClient {
   }
 
   Future<Map<String, dynamic>> pickupDelivery(String deliveryId) async {
-    final carrierId = await _getUserId();
+    await _getUserIdAndRole();
     final resp = await _client.post(
       Uri.parse('$_baseUrl/deliveries/$deliveryId/pickup'),
       headers: _headers(),
-      body: jsonEncode({'carrierId': carrierId}),
     );
     if (resp.statusCode >= 400) {
       throw Exception('Teslimat alımı başarısız: ${resp.body}');

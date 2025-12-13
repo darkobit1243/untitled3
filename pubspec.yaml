@@ -30,6 +30,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_google_places_sdk: ^0.4.2+1
   firebase_core: ^4.2.1        # FlutterFire core plugin
   firebase_auth: ^6.1.2        # Firebase auth
   cloud_firestore: ^6.1.0      # Firestore

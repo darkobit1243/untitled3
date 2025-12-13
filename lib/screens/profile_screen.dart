@@ -29,17 +29,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _loading = true;
     });
     try {
+      final profile = await apiClient.getProfile();
+      final roleValue = profile['role'];
+      final isCarrier = roleValue is String && roleValue == 'carrier';
+      final myListingsFuture = apiClient.fetchMyListings();
+      final carrierDeliveriesFuture = isCarrier
+          ? apiClient.fetchCarrierDeliveries()
+          : Future.value(<dynamic>[]);
+
       final results = await Future.wait([
-        apiClient.getProfile(),
-        apiClient.fetchMyListings(),
-        apiClient.fetchCarrierDeliveries(),
-        apiClient.getPreferredRole(),
+        myListingsFuture,
+        carrierDeliveriesFuture,
       ]);
+
       setState(() {
-        _profile = results[0] as Map<String, dynamic>;
-        _myListingsCount = (results[1] as List<dynamic>).length;
-        _carrierDeliveriesCount = (results[2] as List<dynamic>).length;
-        _preferredRole = results[3] as String? ?? 'sender';
+        _profile = profile;
+        _myListingsCount = (results[0] as List<dynamic>).length;
+        _carrierDeliveriesCount = (results[1] as List<dynamic>).length;
+        _preferredRole = (roleValue is String && roleValue.isNotEmpty) ? roleValue : 'sender';
       });
     } catch (e) {
       if (!mounted) return;
@@ -83,8 +90,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 'Özet',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
-              const SizedBox(height: 12),
-              _buildRoleSelector(),
               const SizedBox(height: 16),
               _buildStatsRow(),
               const SizedBox(height: 32),
@@ -110,6 +115,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildProfileCard(String email, String userId) {
+    final roleLabel = _preferredRole == 'carrier' ? 'Taşıyıcı' : 'Gönderici';
+    final fullName = _profile?['fullName']?.toString();
+    final phone = _profile?['phone']?.toString();
+    final address = _profile?['address']?.toString();
+    final vehicleType = _profile?['vehicleType']?.toString();
+    final vehiclePlate = _profile?['vehiclePlate']?.toString();
+    final serviceArea = _profile?['serviceArea']?.toString();
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -123,42 +136,93 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ],
       ),
       padding: const EdgeInsets.all(16),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 52,
-            height: 52,
-            decoration: BoxDecoration(
-              color: TrustShipColors.backgroundGrey,
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: const Icon(Icons.person, size: 28, color: TrustShipColors.primaryRed),
+          Row(
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: TrustShipColors.backgroundGrey,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: const Icon(Icons.person, size: 28, color: TrustShipColors.primaryRed),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      fullName ?? email,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: TrustShipColors.textDarkGrey,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'ID: $userId',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  email,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: TrustShipColors.textDarkGrey,
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: TrustShipColors.primaryRed.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  roleLabel,
+                  style: const TextStyle(color: TrustShipColors.primaryRed, fontWeight: FontWeight.w600),
+                ),
+              ),
+              if (phone != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: TrustShipColors.backgroundGrey,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    phone,
+                    style: const TextStyle(fontWeight: FontWeight.w500),
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  'ID: $userId',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
-                ),
+            ],
+          ),
+          if (address != null || vehicleType != null || vehiclePlate != null || serviceArea != null) ...[
+            const SizedBox(height: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (address != null)
+                  Text('Adres: $address', style: const TextStyle(fontSize: 13, color: Colors.grey)),
+                if (vehicleType != null)
+                  Text('Araç: $vehicleType', style: const TextStyle(fontSize: 13, color: Colors.grey)),
+                if (vehiclePlate != null)
+                  Text('Plaka: $vehiclePlate', style: const TextStyle(fontSize: 13, color: Colors.grey)),
+                if (serviceArea != null)
+                  Text('Servis: $serviceArea', style: const TextStyle(fontSize: 13, color: Colors.grey)),
               ],
             ),
-          ),
+          ],
         ],
       ),
     );
@@ -183,46 +247,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             icon: Icons.route_outlined,
             color: TrustShipColors.successGreen,
           ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildRoleSelector() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Tercih ettiğin rol',
-          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            ChoiceChip(
-              label: const Text('Gönderici'),
-              selected: _preferredRole == 'sender',
-              onSelected: (v) async {
-                if (!v) return;
-                setState(() {
-                  _preferredRole = 'sender';
-                });
-                await apiClient.setPreferredRole('sender');
-              },
-            ),
-            const SizedBox(width: 8),
-            ChoiceChip(
-              label: const Text('Taşıyıcı'),
-              selected: _preferredRole == 'carrier',
-              onSelected: (v) async {
-                if (!v) return;
-                setState(() {
-                  _preferredRole = 'carrier';
-                });
-                await apiClient.setPreferredRole('carrier');
-              },
-            ),
-          ],
         ),
       ],
     );
