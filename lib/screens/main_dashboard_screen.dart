@@ -239,6 +239,7 @@ class _ModeButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
+                // ignore: deprecated_member_use
                 color: Colors.black.withOpacity(0.05),
                 blurRadius: 12,
                 offset: const Offset(0, 4),
@@ -325,6 +326,7 @@ class _ShipmentCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
+              // ignore: deprecated_member_use
               color: Colors.black.withOpacity(0.05),
               blurRadius: 12,
               offset: const Offset(0, 4),
@@ -374,6 +376,7 @@ class _ShipmentCard extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
+                // ignore: deprecated_member_use
                 color: TrustShipColors.warningOrange.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(999),
               ),
@@ -453,6 +456,7 @@ class _JobCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
+              // ignore: deprecated_member_use
               color: Colors.black.withOpacity(0.05),
               blurRadius: 12,
               offset: const Offset(0, 4),

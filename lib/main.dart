@@ -1,11 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
 
 import 'screens/login_screen.dart';
 import 'screens/main_wrapper.dart';
 import 'services/api_client.dart';
+import 'services/app_navigator.dart';
+import 'services/push_notifications.dart';
+import 'services/push_config.dart';
 import 'theme/trustship_theme.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  if (kEnableFirebasePush) {
+    try {
+      await Firebase.initializeApp();
+    } catch (_) {
+      // Firebase config may be missing in local/dev; app should still run.
+    }
+  }
   runApp(const TrustShipApp());
 }
 
@@ -18,6 +30,7 @@ class TrustShipApp extends StatelessWidget {
       title: 'TrustShip',
       debugShowCheckedModeBanner: false,
       theme: buildTrustShipTheme(),
+      navigatorKey: appNavigatorKey,
       home: const _RootDecider(),
     );
   }
@@ -43,6 +56,9 @@ class _RootDeciderState extends State<_RootDecider> {
 
   Future<void> _checkSession() async {
     final ok = await apiClient.tryRestoreSession();
+    if (ok && kEnableFirebasePush) {
+      await pushNotifications.syncWithSettings();
+    }
     if (!mounted) return;
     setState(() {
       _loggedIn = ok;

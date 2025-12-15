@@ -1,8 +1,14 @@
+// ignore_for_file: deprecated_member_use
+
 import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
+import '../services/app_settings.dart';
 import '../theme/trustship_theme.dart';
 import 'login_screen.dart';
+import 'notifications_settings_screen.dart';
+import 'payment_setup_screen.dart';
+import 'security_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -17,6 +23,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   int _myListingsCount = 0;
   int _carrierDeliveriesCount = 0;
   String _preferredRole = 'sender';
+  final bool _avatarLoading = false;
+  bool _notificationsEnabled = true;
 
   @override
   void initState() {
@@ -51,6 +59,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _loading = true;
     });
     try {
+      final notifEnabled = await appSettings.getNotificationsEnabled();
       final profile = await apiClient.getProfile();
       final roleValue = profile['role'];
       final isCarrier = roleValue is String && roleValue == 'carrier';
@@ -71,6 +80,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _myListingsCount = results[0].length;
         _carrierDeliveriesCount = results[1].length;
         _preferredRole = (roleValue is String && roleValue.isNotEmpty) ? roleValue : 'sender';
+        _notificationsEnabled = notifEnabled;
       });
     } catch (e) {
       if (!mounted) return;
@@ -94,7 +104,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final email = _profile?['email']?.toString() ?? '-';
-    final userId = _profile?['sub']?.toString() ?? '-';
+    final rawPublicId = _profile?['publicId'];
+    final publicId = rawPublicId is num ? rawPublicId.toInt() : int.tryParse(rawPublicId?.toString() ?? '');
+    final userId = publicId != null
+        ? 'TS-${publicId.toString().padLeft(6, '0')}'
+        : (_profile?['id']?.toString() ?? _profile?['sub']?.toString() ?? '-');
 
     return Scaffold(
       appBar: AppBar(title: const Text('Profil & Cüzdan')),
@@ -152,6 +166,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final vehiclePlate = _profile?['vehiclePlate']?.toString();
     final serviceArea = _profile?['serviceArea']?.toString();
     final isCarrier = _preferredRole == 'carrier';
+    final avatarUrl = _profile?['avatarUrl']?.toString();
+    final rating = (_profile?['rating'] as num?)?.toDouble();
+    final delivered = (_profile?['deliveredCount'] as num?)?.toInt();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -161,6 +178,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         color: Colors.white,
             borderRadius: BorderRadius.circular(22),
         boxShadow: [
+              // ignore: duplicate_ignore
+              // ignore: deprecated_member_use
               BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 14),
         ],
       ),
@@ -170,7 +189,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
               CircleAvatar(
                 radius: 30,
                 backgroundColor: TrustShipColors.backgroundGrey,
-                child: const Icon(Icons.person, color: TrustShipColors.primaryRed, size: 32),
+                backgroundImage: (avatarUrl != null && avatarUrl.isNotEmpty) ? NetworkImage(avatarUrl) : null,
+                child: (avatarUrl == null || avatarUrl.isEmpty)
+                    ? const Icon(Icons.person, color: TrustShipColors.primaryRed, size: 32)
+                    : null,
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -180,15 +202,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     Text(fullName, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
                     const SizedBox(height: 4),
                     Text('ID: $userId', style: const TextStyle(color: Colors.grey)),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 6),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
+                        // ignore: duplicate_ignore
+                        // ignore: deprecated_member_use
                         color: TrustShipColors.primaryRed.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(roleLabel, style: const TextStyle(color: TrustShipColors.primaryRed)),
                 ),
+                    if (rating != null || delivered != null) ...[
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          if (rating != null) ...[
+                            const Icon(Icons.star, size: 14, color: Colors.amber),
+                            Text(rating.toStringAsFixed(1), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                          ],
+                          if (delivered != null) ...[
+                            const SizedBox(width: 8),
+                            const Icon(Icons.local_shipping, size: 14, color: Colors.grey),
+                            Text('$delivered teslimat', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                          ],
+                        ],
+                      ),
+                    ],
               ],
             ),
           ),
@@ -237,7 +277,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: () {},
+              onPressed: () async {
+                await Navigator.of(context).push(
+                  MaterialPageRoute<void>(builder: (_) => const PaymentSetupScreen()),
+                );
+              },
               child: const Text('Yöntem Ekle'),
             ),
           ],
@@ -250,13 +294,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('Bildirimler'),
-                trailing: Switch(value: true, onChanged: (_) {}),
+                trailing: Switch(
+                  value: _notificationsEnabled,
+                  onChanged: (v) async {
+                    setState(() => _notificationsEnabled = v);
+                    await appSettings.setNotificationsEnabled(v);
+                  },
+                ),
+                onTap: () async {
+                  await Navigator.of(context).push(
+                    MaterialPageRoute<void>(builder: (_) => const NotificationsSettingsScreen()),
+                  );
+                  // Reload the persisted value when coming back.
+                  final enabled = await appSettings.getNotificationsEnabled();
+                  if (!mounted) return;
+                  setState(() => _notificationsEnabled = enabled);
+                },
               ),
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('Güvenlik'),
                 trailing: const Icon(Icons.chevron_right),
-                onTap: () {},
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(builder: (_) => const SecurityScreen()),
+                  );
+                },
               ),
             ],
           ),

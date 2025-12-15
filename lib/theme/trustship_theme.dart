@@ -22,6 +22,7 @@ ThemeData buildTrustShipTheme() {
       seedColor: TrustShipColors.primaryRed,
       primary: TrustShipColors.primaryRed,
       secondary: TrustShipColors.successGreen,
+      // ignore: deprecated_member_use
       background: TrustShipColors.backgroundGrey,
       error: TrustShipColors.errorRed,
     ),
@@ -60,6 +61,7 @@ ThemeData buildTrustShipTheme() {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
       ),
+      // ignore: deprecated_member_use
       shadowColor: Colors.black.withOpacity(0.05),
       margin: const EdgeInsets.all(0),
     ),

@@ -75,7 +75,7 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Yeni İlan Oluştur')),
+      appBar: AppBar(title: const Text('Kargo Gönderim Ekranı')),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(16.0),
@@ -85,7 +85,7 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const Text(
-                  'Gönderi detaylarını gir, ilanını birkaç adımda yayınla.',
+                  'Kargo detaylarını gir, kargonu birkaç adımda oluştur.',
                   style: TextStyle(fontSize: 14, color: Colors.grey),
                 ),
                 const SizedBox(height: 16),
@@ -107,7 +107,7 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
                               Icon(Icons.camera_alt_outlined, size: 40, color: Colors.grey),
                               SizedBox(height: 8),
                               Text(
-                                'Kargo fotoğrafı yükle (opsiyonel)',
+                                'Kargo fotoğrafı yükle *',
                                 style: TextStyle(color: Colors.grey),
                               ),
                               SizedBox(height: 4),
@@ -298,7 +298,7 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
                             ),
                           )
                         : const Text(
-                            'İlanı Yayınla',
+                            'Kargo Oluştur',
                             style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                           ),
                   ),
@@ -323,6 +323,12 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
 
   void _submitForm() {
     if (_formKey.currentState!.validate()) {
+      if (_pickedImage == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Fotoğraf eklemeden devam edemezsiniz.')),
+        );
+        return;
+      }
       if (_pickupLocation == null || _dropoffLocation == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Lütfen haritadan alış ve teslim noktalarını seç.')),
@@ -333,6 +339,24 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
     }
   }
 
+  String _inferMimeTypeFromPath(String path) {
+    final lower = path.toLowerCase();
+    if (lower.endsWith('.png')) return 'image/png';
+    if (lower.endsWith('.webp')) return 'image/webp';
+    return 'image/jpeg';
+  }
+
+  Future<String> _buildPickedImageDataUrl() async {
+    final picked = _pickedImage;
+    if (picked == null) {
+      throw StateError('picked image is null');
+    }
+    final bytes = await File(picked.path).readAsBytes();
+    final b64 = base64Encode(bytes);
+    final mime = _inferMimeTypeFromPath(picked.path);
+    return 'data:$mime;base64,$b64';
+  }
+
   Future<void> _createListing() async {
     setState(() {
       _isSubmitting = true;
@@ -341,9 +365,12 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
     try {
       final weight = double.tryParse(_weightController.text.trim()) ?? 0;
 
+      final photoDataUrl = await _buildPickedImageDataUrl();
+
       await apiClient.createListing(
         title: _titleController.text.trim(),
         description: _descriptionController.text.trim(),
+        photoDataUrl: photoDataUrl,
         weight: weight,
         // Boyut ve kırılabilirlik alanlarını şimdilik varsayılan gönderiyoruz.
         length: 0,
@@ -359,13 +386,13 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('İlan oluşturuldu.')),
+        const SnackBar(content: Text('Kargo oluşturuldu.')),
       );
       Navigator.pop(context);
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('İlan oluşturulamadı, tekrar dene.')),
+        const SnackBar(content: Text('Kargo oluşturulamadı, tekrar dene.')),
       );
     } finally {
       if (mounted) {

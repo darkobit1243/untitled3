@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
+import 'dart:async';
 
 import '../services/api_client.dart';
+import 'live_tracking_screen.dart';
+import 'qr_scan_screen.dart';
 import '../theme/trustship_theme.dart';
 
 class CarrierDeliveriesScreen extends StatefulWidget {
@@ -14,10 +18,23 @@ class _CarrierDeliveriesScreenState extends State<CarrierDeliveriesScreen> {
   bool _loading = true;
   List<dynamic> _items = [];
 
+  final Map<String, Timer> _autoTrackTimers = <String, Timer>{};
+  bool _locationPermissionChecked = false;
+  bool _locationPermissionGranted = false;
+
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    for (final t in _autoTrackTimers.values) {
+      t.cancel();
+    }
+    _autoTrackTimers.clear();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -29,6 +46,7 @@ class _CarrierDeliveriesScreenState extends State<CarrierDeliveriesScreen> {
       setState(() {
         _items = data;
       });
+      _syncAutoTracking();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -123,6 +141,7 @@ class _CarrierDeliveriesScreenState extends State<CarrierDeliveriesScreen> {
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                 decoration: BoxDecoration(
+                                  // ignore: deprecated_member_use
                                   color: statusColor.withOpacity(0.1),
                                   borderRadius: BorderRadius.circular(999),
                                 ),
@@ -145,12 +164,28 @@ class _CarrierDeliveriesScreenState extends State<CarrierDeliveriesScreen> {
                                   ),
                                 )
                               else if (status == 'in_transit')
-                                TextButton(
-                                  onPressed: () => _updateStatus(id, false),
-                                  child: const Text(
-                                    'Teslim Et',
-                                    style: TextStyle(fontSize: 11),
-                                  ),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    TextButton(
+                                      onPressed: () => _sendLocation(id),
+                                      child: const Text('Konumu Gönder', style: TextStyle(fontSize: 11)),
+                                    ),
+                                    TextButton(
+                                      onPressed: () {
+                                        Navigator.of(context).push(
+                                          MaterialPageRoute<void>(
+                                            builder: (_) => LiveTrackingScreen(deliveryId: id),
+                                          ),
+                                        );
+                                      },
+                                      child: const Text('Canlı Takip', style: TextStyle(fontSize: 11)),
+                                    ),
+                                    TextButton(
+                                      onPressed: () => _updateStatus(id, false),
+                                      child: const Text('Teslim Et', style: TextStyle(fontSize: 11)),
+                                    ),
+                                  ],
                                 ),
                             ],
                           ),
@@ -165,7 +200,19 @@ class _CarrierDeliveriesScreenState extends State<CarrierDeliveriesScreen> {
   Future<void> _updateStatus(String deliveryId, bool pickup) async {
     try {
       if (pickup) {
-        await apiClient.pickupDelivery(deliveryId);
+        final qr = await Navigator.of(context).push<String?>(
+          MaterialPageRoute<String?>(
+            builder: (_) => const QrScanScreen(),
+          ),
+        );
+        if (qr == null || qr.trim().isEmpty) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('QR okutulmadan devam edemezsiniz.')),
+          );
+          return;
+        }
+        await apiClient.pickupDeliveryWithQr(deliveryId, qrToken: qr.trim());
       } else {
         await apiClient.deliverDelivery(deliveryId);
       }
@@ -176,10 +223,121 @@ class _CarrierDeliveriesScreenState extends State<CarrierDeliveriesScreen> {
           content: Text(pickup ? 'Teslimat alındı.' : 'Teslim edildi.'),
         ),
       );
+
+      if (pickup) {
+        // QR doğrulaması başarılı -> takip aktif. Doğrudan canlı takip ekranına geç.
+        // ignore: use_build_context_synchronously
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => LiveTrackingScreen(deliveryId: deliveryId),
+          ),
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('İşlem başarısız: $e')),
+      );
+    }
+  }
+
+  void _syncAutoTracking() {
+    // Start tracking timers for in_transit deliveries; stop for others.
+    final inTransitIds = _items
+        .whereType<Map<String, dynamic>>()
+        .where((d) => (d['status']?.toString() ?? '') == 'in_transit')
+        .map((d) => d['id']?.toString() ?? '')
+        .where((id) => id.isNotEmpty)
+        .toSet();
+
+    final toStop = _autoTrackTimers.keys.where((id) => !inTransitIds.contains(id)).toList();
+    for (final id in toStop) {
+      _autoTrackTimers[id]?.cancel();
+      _autoTrackTimers.remove(id);
+    }
+
+    for (final id in inTransitIds) {
+      _autoTrackTimers.putIfAbsent(id, () {
+        // Send immediately, then every 15s.
+        _sendLocationSilently(id);
+        return Timer.periodic(const Duration(seconds: 15), (_) => _sendLocationSilently(id));
+      });
+    }
+  }
+
+  Future<bool> _ensureLocationPermissionSilent() async {
+    if (_locationPermissionChecked) return _locationPermissionGranted;
+    _locationPermissionChecked = true;
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        _locationPermissionGranted = false;
+        return false;
+      }
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      _locationPermissionGranted = !(permission == LocationPermission.denied || permission == LocationPermission.deniedForever);
+      return _locationPermissionGranted;
+    } catch (_) {
+      _locationPermissionGranted = false;
+      return false;
+    }
+  }
+
+  Future<void> _sendLocationSilently(String deliveryId) async {
+    if (!mounted) return;
+    final ok = await _ensureLocationPermissionSilent();
+    if (!ok) return;
+    try {
+      final pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.medium,
+        timeLimit: const Duration(seconds: 6),
+      );
+      await apiClient.updateDeliveryLocation(deliveryId, lat: pos.latitude, lng: pos.longitude);
+    } catch (_) {
+      // Silent fail (no UI noise)
+    }
+  }
+
+  Future<void> _sendLocation(String deliveryId) async {
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Konum servisleri kapalı.')),
+        );
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Konum izni gerekli.')),
+        );
+        return;
+      }
+
+      final pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.medium,
+        timeLimit: const Duration(seconds: 6),
+      );
+
+      await apiClient.updateDeliveryLocation(deliveryId, lat: pos.latitude, lng: pos.longitude);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Konum gönderildi.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Konum gönderilemedi: $e')),
       );
     }
   }

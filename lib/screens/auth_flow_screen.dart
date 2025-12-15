@@ -145,8 +145,10 @@ class _AuthFlowScreenState extends State<AuthFlowScreen> {
       onTap: onTap,
       child: Ink(
         decoration: BoxDecoration(
+          // ignore: deprecated_member_use
           color: color.withOpacity(0.06),
           borderRadius: BorderRadius.circular(18),
+          // ignore: deprecated_member_use
           border: Border.all(color: color.withOpacity(0.35)),
         ),
         child: Padding(
@@ -155,6 +157,7 @@ class _AuthFlowScreenState extends State<AuthFlowScreen> {
             children: [
               CircleAvatar(
                 radius: 22,
+                // ignore: deprecated_member_use
                 backgroundColor: color.withOpacity(0.12),
                 child: Icon(icon, color: color),
               ),

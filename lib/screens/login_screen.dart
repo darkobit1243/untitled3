@@ -3,6 +3,8 @@
 import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
+import '../services/push_notifications.dart';
+import '../services/push_config.dart';
 import '../theme/trustship_theme.dart';
 import 'auth_flow_screen.dart';
 import 'main_wrapper.dart'; // Giriş başarılı olursa buraya gidecek
@@ -45,6 +47,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       await apiClient.login(email, password);
+      if (kEnableFirebasePush) {
+        await pushNotifications.syncWithSettings();
+      }
 
       if (!mounted) return;
       Navigator.pushReplacement(

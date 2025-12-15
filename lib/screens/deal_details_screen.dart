@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
+import 'live_tracking_screen.dart';
 import '../theme/trustship_theme.dart';
 
 /// Anlaşma detay ekranı:
@@ -107,6 +108,7 @@ class _DealDetailsScreenState extends State<DealDetailsScreen> {
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
+            // ignore: deprecated_member_use
             color: Colors.black.withOpacity(0.05),
             blurRadius: 12,
             offset: const Offset(0, 4),
@@ -156,6 +158,9 @@ class _DealDetailsScreenState extends State<DealDetailsScreen> {
     Color statusColor = Colors.grey;
     String extra = 'Bu ilan için henüz bir teslimat oluşturulmadı.';
 
+    final deliveryId = _delivery?['id']?.toString() ?? '';
+    final trackingEnabled = _delivery?['trackingEnabled'] == true;
+
     if (_delivery != null) {
       final status = _delivery!['status']?.toString();
       final pickupAt = _delivery!['pickupAt']?.toString() ?? '';
@@ -182,6 +187,7 @@ class _DealDetailsScreenState extends State<DealDetailsScreen> {
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
+            // ignore: deprecated_member_use
             color: Colors.black.withOpacity(0.05),
             blurRadius: 12,
             offset: const Offset(0, 4),
@@ -189,45 +195,65 @@ class _DealDetailsScreenState extends State<DealDetailsScreen> {
         ],
       ),
       padding: const EdgeInsets.all(16),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Icon(Icons.route, color: TrustShipColors.successGreen),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Teslimat Durumu',
+          Row(
+            children: [
+              const Icon(Icons.route, color: TrustShipColors.successGreen),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Teslimat Durumu',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: TrustShipColors.textDarkGrey,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      extra,
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  // ignore: deprecated_member_use
+                  color: statusColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  statusLabel,
                   style: TextStyle(
+                    color: statusColor,
+                    fontSize: 11,
                     fontWeight: FontWeight.w600,
-                    color: TrustShipColors.textDarkGrey,
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  extra,
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: statusColor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Text(
-              statusLabel,
-              style: TextStyle(
-                color: statusColor,
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
               ),
-            ),
+            ],
           ),
+          if (trackingEnabled && deliveryId.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => LiveTrackingScreen(deliveryId: deliveryId),
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: TrustShipColors.primaryRed),
+              child: const Text('Canlı Takip'),
+            ),
+          ],
         ],
       ),
     );
@@ -242,6 +268,7 @@ class _DealDetailsScreenState extends State<DealDetailsScreen> {
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
+            // ignore: deprecated_member_use
             color: Colors.black.withOpacity(0.05),
             blurRadius: 12,
             offset: const Offset(0, 4),
@@ -325,6 +352,7 @@ class _DealDetailsScreenState extends State<DealDetailsScreen> {
                     trailing: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
+                        // ignore: deprecated_member_use
                         color: statusColor.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(999),
                       ),
@@ -382,13 +410,16 @@ class _DealDetailsScreenState extends State<DealDetailsScreen> {
                     amount: value,
                   );
                   if (!mounted) return;
+                  // ignore: use_build_context_synchronously
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Teklif gönderildi.')),
                   );
+                  // ignore: use_build_context_synchronously
                   Navigator.pop(context);
                   await _load();
                 } catch (e) {
                   if (!mounted) return;
+                  // ignore: use_build_context_synchronously
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text('Teklif gönderilemedi: $e')),
                   );

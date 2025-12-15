@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 import '../services/api_client.dart';
+import '../services/app_settings.dart';
+import 'live_tracking_screen.dart';
 import '../theme/trustship_theme.dart';
 
 class MyShipmentsScreen extends StatefulWidget {
-  const MyShipmentsScreen({super.key});
+  const MyShipmentsScreen({super.key, this.initialOpenOffersListingId});
+
+  final String? initialOpenOffersListingId;
 
   @override
   State<MyShipmentsScreen> createState() => _MyShipmentsScreenState();
@@ -15,12 +20,24 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
   List<dynamic> _activeListings = [];
   List<dynamic> _historyListings = [];
 
+  final Set<String> _offerBadgeListingIds = <String>{};
+  final Set<String> _offerSubscribedListingIds = <String>{};
+
   // NOT: Teklif filtre/sıralama modaline ait fonksiyon, asıl sheet state'ine taşındı.
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    for (final id in _offerSubscribedListingIds) {
+      apiClient.stopFollowingOfferUpdates(id);
+    }
+    _offerSubscribedListingIds.clear();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -40,6 +57,8 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
         active.add({'type': 'listing', 'data': listing});
       }
 
+      _syncOfferSubscriptions(listingsData);
+
       // Add accepted deliveries (these are accepted offers)
       for (final delivery in deliveriesData) {
         final status = delivery['status']?.toString() ?? '';
@@ -55,6 +74,8 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
         _activeListings = active;
         _historyListings = history;
       });
+
+      _maybeAutoOpenOffers();
     } catch (e) {
       if (!mounted) return;
       // Debug: Show the actual error
@@ -68,6 +89,29 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
         });
       }
     }
+  }
+
+  void _maybeAutoOpenOffers() {
+    final targetId = widget.initialOpenOffersListingId;
+    if (targetId == null || targetId.isEmpty) return;
+
+    // Only try once
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final all = <dynamic>[..._activeListings, ..._historyListings];
+      String? title;
+      for (final item in all) {
+        if (item is! Map<String, dynamic>) continue;
+        if (item['type'] != 'listing') continue;
+        final data = item['data'] as Map<String, dynamic>;
+        final id = data['id']?.toString();
+        if (id == targetId) {
+          title = data['title']?.toString() ?? 'Gönderi';
+          break;
+        }
+      }
+      _openOffersForListing(targetId, title ?? 'Gönderi');
+    });
   }
 
   @override
@@ -100,6 +144,9 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
   }
 
   void _openOffersForListing(String listingId, String title) async {
+    if (_offerBadgeListingIds.remove(listingId)) {
+      if (mounted) setState(() {});
+    }
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -109,6 +156,39 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
       builder: (context) {
         return _OffersForListingSheet(listingId: listingId, title: title);
       },
+    );
+  }
+
+  void _syncOfferSubscriptions(List<dynamic> listingsData) {
+    final listingIds = listingsData
+        .map((e) => (e as Map<String, dynamic>)['id']?.toString() ?? '')
+        .where((id) => id.isNotEmpty)
+        .toSet();
+
+    final toRemove = _offerSubscribedListingIds.difference(listingIds);
+    for (final id in toRemove) {
+      apiClient.stopFollowingOfferUpdates(id);
+      _offerSubscribedListingIds.remove(id);
+      _offerBadgeListingIds.remove(id);
+    }
+
+    final toAdd = listingIds.difference(_offerSubscribedListingIds);
+    for (final id in toAdd) {
+      _offerSubscribedListingIds.add(id);
+      apiClient.followOfferUpdates(id, (data) => _onOfferEvent(id, data));
+    }
+  }
+
+  Future<void> _onOfferEvent(String listingId, dynamic data) async {
+    if (!mounted) return;
+    setState(() {
+      _offerBadgeListingIds.add(listingId);
+    });
+
+    final enabled = await appSettings.getNotificationsEnabled();
+    if (!mounted || !enabled) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Yeni teklif geldi.')),
     );
   }
 
@@ -135,10 +215,13 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
           // Handle delivery items (accepted offers)
           final delivery = data;
           final listing = delivery['listing'] as Map<String, dynamic>? ?? {};
+          final deliveryId = delivery['id']?.toString() ?? '';
+          final pickupQrToken = delivery['pickupQrToken']?.toString() ?? '';
           final pickup = listing['pickup_location']?['address']?.toString() ?? '–';
           final dropoff = listing['dropoff_location']?['address']?.toString() ?? '–';
           final title = listing['title']?.toString() ?? 'İlan ${delivery['listingId'] ?? delivery['id'] ?? ''}';
           final status = delivery['status']?.toString() ?? 'unknown';
+          final trackingEnabled = delivery['trackingEnabled'] == true;
           final amount = listing['weight']?.toString() ?? '-';
           final chip = _buildStatusChip(status);
 
@@ -149,6 +232,7 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
           ];
 
           return Card(
+            // ignore: deprecated_member_use
             color: Colors.white.withOpacity(0.95),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
             child: Padding(
@@ -177,15 +261,23 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
                   Wrap(
                     spacing: 8,
                     children: [
-                      if (isActive)
+                      if (status == 'pickup_pending' && pickupQrToken.isNotEmpty)
                         ElevatedButton(
-                          onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Konum güncelleme yakında eklenecek')),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: TrustShipColors.primaryRed,
-                          ),
-                          child: const Text('Konumu Güncelle'),
+                          onPressed: () => _showPickupQr(context, pickupQrToken),
+                          style: ElevatedButton.styleFrom(backgroundColor: TrustShipColors.primaryBlue),
+                          child: const Text('QR Göster'),
+                        ),
+                      if ((trackingEnabled || status == 'in_transit') && deliveryId.isNotEmpty)
+                        ElevatedButton(
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) => LiveTrackingScreen(deliveryId: deliveryId),
+                              ),
+                            );
+                          },
+                          style: ElevatedButton.styleFrom(backgroundColor: TrustShipColors.primaryRed),
+                          child: const Text('Canlı Takip'),
                         ),
                       ElevatedButton(
                         onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
@@ -205,6 +297,8 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
         } else {
           // Handle listing items (regular listings)
           final listing = data;
+          final listingId = listing['id']?.toString() ?? '';
+          final hasOfferBadge = listingId.isNotEmpty && _offerBadgeListingIds.contains(listingId);
           final pickup = listing['pickup_location']?['address']?.toString() ?? '–';
           final dropoff = listing['dropoff_location']?['address']?.toString() ?? '–';
           final title = listing['title']?.toString() ?? 'Gönderi ${listing['id'] ?? ''}';
@@ -213,6 +307,7 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
           final chip = _buildStatusChip(status);
 
           return Card(
+            // ignore: deprecated_member_use
             color: Colors.white.withOpacity(0.95),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
             child: Padding(
@@ -228,6 +323,16 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
                           style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
                         ),
                       ),
+                      if (hasOfferBadge)
+                        Container(
+                          width: 10,
+                          height: 10,
+                          margin: const EdgeInsets.only(right: 8),
+                          decoration: const BoxDecoration(
+                            color: TrustShipColors.primaryRed,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
                       chip,
                     ],
                   ),
@@ -240,7 +345,7 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
                     spacing: 8,
                     children: [
                       ElevatedButton(
-                        onPressed: () => _openOffersForListing(listing['id']?.toString() ?? '', title),
+                        onPressed: () => _openOffersForListing(listingId, title),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: TrustShipColors.primaryBlue,
                         ),
@@ -254,6 +359,36 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
           );
         }
       },
+    );
+  }
+
+  void _showPickupQr(BuildContext context, String token) {
+    showDialog<void>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Teslimat QR Kodu'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            QrImageView(
+              data: token,
+              size: 220,
+              backgroundColor: Colors.white,
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Kurye teslimatı almak için bu QR kodu okutmalıdır.',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Kapat'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -272,6 +407,7 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
+        // ignore: deprecated_member_use
         color: color.withOpacity(0.15),
         borderRadius: BorderRadius.circular(999),
       ),
@@ -508,6 +644,7 @@ class _OffersForListingSheetState extends State<_OffersForListingSheet> {
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                               decoration: BoxDecoration(
+                                // ignore: deprecated_member_use
                                 color: statusColor.withOpacity(0.1),
                                 borderRadius: BorderRadius.circular(999),
                               ),

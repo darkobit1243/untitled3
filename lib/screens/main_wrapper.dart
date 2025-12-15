@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
 import '../services/api_client.dart';
-import 'home_screen.dart';
+import 'carrier_home_screen.dart';
+import 'sender_home_screen.dart';
 import 'my_shipments_screen.dart';
 import 'profile_screen.dart';
 import 'carrier_deliveries_screen.dart';
 import 'messages_screen.dart';
 
 class MainWrapper extends StatefulWidget {
-  const MainWrapper({super.key});
+  const MainWrapper({super.key, this.initialIndex, this.initialOpenOffersListingId});
+
+  final int? initialIndex;
+  final String? initialOpenOffersListingId;
 
   @override
   State<MainWrapper> createState() => _MainWrapperState();
@@ -21,6 +25,9 @@ class _MainWrapperState extends State<MainWrapper> {
   @override
   void initState() {
     super.initState();
+    if (widget.initialIndex != null) {
+      _currentIndex = widget.initialIndex!.clamp(0, 3);
+    }
     _loadRole();
   }
 
@@ -41,8 +48,10 @@ class _MainWrapperState extends State<MainWrapper> {
 
     final isCarrier = _role == 'carrier';
     final pages = <Widget>[
-      HomeScreen(role: isCarrier ? 'carrier' : 'sender'),
-      isCarrier ? const CarrierDeliveriesScreen() : const MyShipmentsScreen(),
+      isCarrier ? const CarrierHomeScreen() : const SenderHomeScreen(),
+      isCarrier
+          ? const CarrierDeliveriesScreen()
+          : MyShipmentsScreen(initialOpenOffersListingId: widget.initialOpenOffersListingId),
       const MessagesScreen(),
       const ProfileScreen(),
     ];

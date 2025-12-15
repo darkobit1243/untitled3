@@ -1,7 +1,9 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+// ignore: library_prefixes
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 
 /// Basit kargo-backend HTTP istemcisi.
@@ -21,6 +23,15 @@ class ApiClient {
   IO.Socket? _socket;
   final List<void Function(bool)> _socketStatusListeners = [];
 
+  /// Public auth helpers for other services
+  Map<String, String> authHeaders() => _headers();
+  String get baseUrl => _baseUrl;
+  Future<String?> getAuthToken() async {
+    if (_jwt != null) return _jwt;
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('auth_token');
+  }
+
   void _log(String message) {
     if (enableLogging) {
       // ignore: avoid_print
@@ -31,6 +42,21 @@ class ApiClient {
   void setToken(String token) {
     _jwt = token;
     _persistToken(token);
+  }
+
+  Future<void> registerFcmToken(String? token) async {
+    if (_jwt == null) {
+      final restored = await tryRestoreSession();
+      if (!restored) return;
+    }
+    final resp = await _client.post(
+      Uri.parse('$_baseUrl/auth/fcm-token'),
+      headers: _headers(),
+      body: jsonEncode(<String, dynamic>{'token': token}),
+    );
+    if (resp.statusCode >= 400) {
+      throw Exception('FCM token kaydedilemedi: ${resp.body}');
+    }
   }
 
   Future<void> _persistToken(String token) async {
@@ -115,6 +141,14 @@ class ApiClient {
     setToken(token);
     if (r != null) {
       await setPreferredRole(r);
+    } else {
+      // Bazı backend sürümlerinde login response'unda role dönmeyebilir.
+      // Token set edildikten sonra /auth/me ile role'u çekip local'e yaz.
+      try {
+        await _getUserIdAndRole();
+      } catch (_) {
+        // ignore: login başarılı; role default'u sender kalır.
+      }
     }
     return token;
   }
@@ -168,6 +202,17 @@ class ApiClient {
     return jsonDecode(resp.body) as Map<String, dynamic>;
   }
 
+  Future<Map<String, dynamic>> fetchUserById(String userId) async {
+    final resp = await _client.get(
+      Uri.parse('$_baseUrl/auth/users/$userId'),
+      headers: _headers(),
+    );
+    if (resp.statusCode >= 400) {
+      throw Exception('Kullanıcı bilgisi alınamadı: ${resp.body}');
+    }
+    return jsonDecode(resp.body) as Map<String, dynamic>;
+  }
+
   // LOCAL PREFS (rol vb.)
   Future<String> getPreferredRole() async {
     final prefs = await SharedPreferences.getInstance();
@@ -188,12 +233,18 @@ class ApiClient {
     if (resp.statusCode >= 400) {
       throw Exception('İlanlar alınamadı: ${resp.body}');
     }
-    return jsonDecode(resp.body) as List<dynamic>;
+    final list = jsonDecode(resp.body) as List<dynamic>;
+    if (kDebugMode) {
+      // ignore: avoid_print
+      print('ApiClient.fetchListings: status=${resp.statusCode} count=${list.length}');
+    }
+    return list;
   }
 
   Future<Map<String, dynamic>> createListing({
     required String title,
     required String description,
+    String? photoDataUrl,
     required double weight,
     double length = 0,
     double width = 0,
@@ -212,7 +263,7 @@ class ApiClient {
       body: jsonEncode({
         'title': title,
         'description': description,
-        'photos': <String>[],
+        'photos': photoDataUrl == null ? <String>[] : <String>[photoDataUrl],
         'weight': weight,
         'dimensions': {
           'length': length,
@@ -356,6 +407,20 @@ class ApiClient {
     final resp = await _client.post(
       Uri.parse('$_baseUrl/deliveries/$deliveryId/pickup'),
       headers: _headers(),
+      body: jsonEncode(<String, dynamic>{}),
+    );
+    if (resp.statusCode >= 400) {
+      throw Exception('Teslimat alımı başarısız: ${resp.body}');
+    }
+    return jsonDecode(resp.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> pickupDeliveryWithQr(String deliveryId, {required String qrToken}) async {
+    await _getUserIdAndRole();
+    final resp = await _client.post(
+      Uri.parse('$_baseUrl/deliveries/$deliveryId/pickup'),
+      headers: _headers(),
+      body: jsonEncode(<String, dynamic>{'qrToken': qrToken}),
     );
     if (resp.statusCode >= 400) {
       throw Exception('Teslimat alımı başarısız: ${resp.body}');
@@ -372,6 +437,39 @@ class ApiClient {
       throw Exception('Teslim etme işlemi başarısız: ${resp.body}');
     }
     return jsonDecode(resp.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> fetchDeliveryById(String deliveryId) async {
+    final resp = await _client.get(
+      Uri.parse('$_baseUrl/deliveries/$deliveryId'),
+      headers: _headers(),
+    );
+    if (resp.statusCode >= 400) {
+      throw Exception('Teslimat bilgisi alınamadı: ${resp.body}');
+    }
+    return jsonDecode(resp.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> updateDeliveryLocation(String deliveryId, {required double lat, required double lng}) async {
+    await _getUserIdAndRole();
+    final resp = await _client.post(
+      Uri.parse('$_baseUrl/deliveries/$deliveryId/location'),
+      headers: _headers(),
+      body: jsonEncode(<String, dynamic>{'lat': lat, 'lng': lng}),
+    );
+    if (resp.statusCode >= 400) {
+      throw Exception('Konum güncelleme başarısız: ${resp.body}');
+    }
+    return jsonDecode(resp.body) as Map<String, dynamic>;
+  }
+
+  void followDeliveryUpdates(String deliveryId, void Function(dynamic) handler) {
+    _ensureMessageSocket();
+    _socket?.on('delivery_$deliveryId', handler);
+  }
+
+  void stopFollowingDelivery(String deliveryId) {
+    _socket?.off('delivery_$deliveryId');
   }
 
   Future<String> getCurrentUserId() async {
@@ -408,7 +506,6 @@ class ApiClient {
     required String content,
     required String senderId,
     required String carrierId,
-    required bool fromCarrier,
   }) async {
     final resp = await _client.post(
       Uri.parse('$_baseUrl/messages'),
@@ -418,11 +515,10 @@ class ApiClient {
         'content': content,
         'senderId': senderId,
         'carrierId': carrierId,
-        'fromCarrier': fromCarrier,
       }),
     );
     if (resp.statusCode >= 400) {
-      throw Exception('Mesaj gönderilemedi: ${resp.body}');
+      throw Exception('Mesaj gönderilemedi: ${resp.statusCode} ${resp.body}');
     }
     return jsonDecode(resp.body) as Map<String, dynamic>;
   }
@@ -434,6 +530,15 @@ class ApiClient {
 
   void stopFollowingListing(String listingId) {
     _socket?.off('message_$listingId');
+  }
+
+  void followOfferUpdates(String listingId, void Function(dynamic) handler) {
+    _ensureMessageSocket();
+    _socket?.on('offer_$listingId', handler);
+  }
+
+  void stopFollowingOfferUpdates(String listingId) {
+    _socket?.off('offer_$listingId');
   }
 
   void addSocketStatusListener(void Function(bool) listener) {
@@ -489,9 +594,11 @@ class ApiClient {
     // Test connection after 2 seconds
     Future.delayed(const Duration(seconds: 2), () {
       if (_socket?.connected == true) {
-        print('✅ Socket is connected and ready');
       } else {
-        print('❌ Socket failed to connect');
+        if (kDebugMode) {
+          // ignore: avoid_print
+          print('❌ Socket failed to connect');
+        }
       }
     });
   }
