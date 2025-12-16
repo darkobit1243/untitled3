@@ -5,11 +5,17 @@
 // 2) Seçilen role göre basit kayıt formu
 // Kayıttan sonra otomatik login yapıp MainWrapper'a yönlendirir.
 
+import 'dart:math';
+
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../services/api_client.dart';
 import '../theme/trustship_theme.dart';
 import 'main_wrapper.dart';
+import 'otp_verification_screen.dart';
 
 enum AuthView {
   roleSelection,
@@ -38,6 +44,31 @@ class _AuthFlowScreenState extends State<AuthFlowScreen> {
 
   bool _isLoading = false;
   String? _error;
+  int? _lastResendToken;
+
+  late final String _phoneHint;
+
+  @override
+  void initState() {
+    super.initState();
+    _phoneHint = _buildRandomTrPhoneHint();
+  }
+
+  String _friendlyFirebaseAuthError(FirebaseAuthException e) {
+    // Common Firebase Phone Auth errors.
+    switch (e.code) {
+      case 'billing-not-enabled':
+        return 'SMS doğrulama için Firebase projesinde faturalandırma (Blaze) gerekir.\n\nSadece test amaçlıysa: Firebase Console > Authentication > Sign-in method > Phone > Test phone numbers kısmından test numarası ekleyip onunla deneyin.';
+      case 'quota-exceeded':
+        return 'SMS kotası aşıldı. Bir süre bekleyip tekrar deneyin.\n\nTest için: Firebase Console > Authentication > Phone > Test phone numbers.';
+      case 'invalid-phone-number':
+        return 'Telefon numarası geçersiz. 10 haneli 5xxxxxxxxx formatında gir.';
+      case 'too-many-requests':
+        return 'Çok fazla deneme yapıldı. Lütfen biraz bekleyip tekrar deneyin.';
+      default:
+        return e.message ?? 'SMS doğrulama başlatılamadı.';
+    }
+  }
 
   @override
   void dispose() {
@@ -352,13 +383,25 @@ class _AuthFlowScreenState extends State<AuthFlowScreen> {
         TextField(
           controller: _phoneController,
           keyboardType: TextInputType.phone,
-          decoration: const InputDecoration(
-            hintText: '+90 5xx xxx xx xx',
-            prefixIcon: Icon(Icons.phone_outlined),
+          inputFormatters: const [TrPhoneHyphenFormatter()],
+          decoration: InputDecoration(
+            hintText: _phoneHint,
+            prefixIcon: const Icon(Icons.phone_outlined),
           ),
         ),
       ],
     );
+  }
+
+  String _buildRandomTrPhoneHint() {
+    // 10 hane TR GSM: 5xxxxxxxxx
+    final rnd = Random();
+    final digits = StringBuffer('5');
+    for (var i = 0; i < 9; i++) {
+      digits.write(rnd.nextInt(10));
+    }
+    final raw = digits.toString();
+    return '${raw.substring(0, 3)}-${raw.substring(3, 6)}-${raw.substring(6)}';
   }
 
   Widget _buildSenderFields() {
@@ -433,23 +476,19 @@ class _AuthFlowScreenState extends State<AuthFlowScreen> {
     final password = _passwordController.text;
     final confirm = _passwordConfirmController.text;
     final fullName = _fullNameController.text.trim();
-    final phone = _phoneController.text.trim();
+    final phone = _normalizePhone(_phoneController.text);
 
-    if (email.isEmpty || password.isEmpty || confirm.isEmpty) {
-      setState(() {
-        _error = 'Lütfen tüm alanları doldur.';
-      });
-      return;
-    }
-    if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email)) {
+    // E-posta opsiyonel. Girildiyse format kontrolü yap.
+    if (email.isNotEmpty && !RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email)) {
       setState(() {
         _error = 'Lütfen geçerli bir e-posta gir.';
       });
       return;
     }
-    if (fullName.isEmpty || phone.isEmpty) {
+
+    if (fullName.isEmpty || phone == null) {
       setState(() {
-        _error = 'İsim ve telefon bilgilerini gir.';
+        _error = 'İsim ve geçerli telefon (5xxxxxxxxx) bilgilerini gir.';
       });
       return;
     }
@@ -472,7 +511,6 @@ class _AuthFlowScreenState extends State<AuthFlowScreen> {
     });
 
     try {
-      // 1) Backend'de kullanıcıyı oluştur
       final profile = <String, dynamic>{
         'fullName': fullName,
         'phone': phone,
@@ -503,13 +541,11 @@ class _AuthFlowScreenState extends State<AuthFlowScreen> {
         }
       }
 
-      await apiClient.register(email, password, role: role, profile: profile);
-
-      if (!mounted) return;
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (_) => const MainWrapper()),
-        (route) => false,
+      await _startPhoneVerification(
+        role: role,
+        email: email.isEmpty ? null : email,
+        password: password,
+        profile: profile,
       );
     } catch (e) {
       if (!mounted) return;
@@ -523,6 +559,155 @@ class _AuthFlowScreenState extends State<AuthFlowScreen> {
         });
       }
     }
+  }
+
+  String? _normalizePhone(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return null;
+
+    // TR için kullanıcı genelde "544-567-5582" gibi girer.
+    // Tire/boşluk/parantez vs. temizle, sadece rakamları al.
+    var digits = trimmed.replaceAll(RegExp(r'\D'), '');
+    if (digits.isEmpty) return null;
+
+    // Kabul edilen girişler:
+    // - 10 hane: 5xxxxxxxxx  -> +90
+    // - 11 hane: 05xxxxxxxxx -> +90
+    // - 12 hane: 90 + 10 hane -> +90
+    // - E.164 girilmişse (+90...) zaten digits=90...
+
+    if (digits.length == 11 && digits.startsWith('0')) {
+      digits = digits.substring(1);
+    }
+    if (digits.length == 12 && digits.startsWith('90')) {
+      digits = digits.substring(2);
+    }
+
+    // TR GSM numarası 10 hane ve 5 ile başlar.
+    if (digits.length != 10 || !digits.startsWith('5')) {
+      return null;
+    }
+
+    return '+90$digits';
+  }
+
+  Future<void> _startPhoneVerification({
+    required String role,
+    required String? email,
+    required String password,
+    required Map<String, dynamic> profile,
+  }) async {
+    final phone = profile['phone'] as String?;
+    if (phone == null) {
+      throw StateError('Telefon eksik');
+    }
+
+    // Firebase init (Firebase config eksikse kullanıcıya anlaşılır hata dönelim).
+    try {
+      await Firebase.initializeApp();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Firebase yapılandırması eksik. Lütfen Firebase Console ayarlarını tamamlayın.';
+      });
+      return;
+    }
+
+    final auth = FirebaseAuth.instance;
+
+    await auth.verifyPhoneNumber(
+      phoneNumber: phone,
+      timeout: const Duration(seconds: 60),
+      verificationCompleted: (PhoneAuthCredential credential) async {
+        try {
+          final userCred = await auth.signInWithCredential(credential);
+          final idToken = await userCred.user?.getIdToken(true);
+          if (idToken == null) {
+            throw StateError('Firebase token alınamadı');
+          }
+          await apiClient.registerWithFirebaseIdToken(
+            idToken,
+            role: role,
+            email: email,
+            password: password,
+            profile: profile,
+          );
+          if (!mounted) return;
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (_) => const MainWrapper()),
+            (route) => false,
+          );
+        } catch (e) {
+          if (!mounted) return;
+          setState(() {
+            _error = 'Doğrulama başarısız: ${e.toString()}';
+          });
+        }
+      },
+      verificationFailed: (FirebaseAuthException e) {
+        if (!mounted) return;
+        setState(() {
+          _error = _friendlyFirebaseAuthError(e);
+        });
+      },
+      codeSent: (String verificationId, int? resendToken) {
+        _lastResendToken = resendToken;
+
+        if (!mounted) return;
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => OtpVerificationScreen(
+              verificationId: verificationId,
+              resendToken: resendToken,
+              role: role,
+              email: email,
+              password: password,
+              profile: profile,
+            ),
+          ),
+        );
+      },
+      codeAutoRetrievalTimeout: (_) {},
+      forceResendingToken: _lastResendToken,
+    );
+  }
+}
+
+/// Turkish phone input formatter that auto-inserts hyphens in 3-3-4 format.
+///
+/// User types digits only; formatter displays like: 544-567-5582.
+class TrPhoneHyphenFormatter extends TextInputFormatter {
+  const TrPhoneHyphenFormatter();
+
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+    var digits = newValue.text.replaceAll(RegExp(r'\D'), '');
+    if (digits.length > 10) {
+      digits = digits.substring(0, 10);
+    }
+
+    // TR GSM numbers should start with 5 (e.g., 5xxxxxxxxx). If user starts with
+    // something else, force it to 5.
+    if (digits.isNotEmpty && digits[0] != '5') {
+      digits = digits.length == 1 ? '5' : '5${digits.substring(1)}';
+    }
+
+    final formatted = _format(digits);
+    return TextEditingValue(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: formatted.length),
+    );
+  }
+
+  String _format(String digits) {
+    if (digits.isEmpty) return '';
+    if (digits.length <= 3) return digits;
+    if (digits.length <= 6) {
+      return '${digits.substring(0, 3)}-${digits.substring(3)}';
+    }
+    return '${digits.substring(0, 3)}-${digits.substring(3, 6)}-${digits.substring(6)}';
   }
 }
 

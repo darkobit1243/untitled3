@@ -23,7 +23,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   int _myListingsCount = 0;
   int _carrierDeliveriesCount = 0;
   String _preferredRole = 'sender';
-  final bool _avatarLoading = false;
   bool _notificationsEnabled = true;
 
   @override

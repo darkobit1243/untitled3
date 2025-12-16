@@ -7,6 +7,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../services/api_client.dart';
+import '../services/google_api_keys.dart';
+import '../services/location_gate.dart';
 import '../theme/trustship_theme.dart';
 import '../widgets/Home_screen_widgets/home_screen_widgets.dart';
 import 'ilanlar_screen.dart';
@@ -160,7 +162,7 @@ class _CarrierHomeScreenState extends State<CarrierHomeScreen> {
     try {
       _placesCancelToken?.cancel();
       _placesCancelToken = CancelToken();
-      final params = <String, dynamic>{'input': input, 'key': 'AIzaSyBJu0tWf3dKoJV6m5r_tp02sOYSOUpgCV0', 'language': 'tr', 'components': 'country:tr'};
+      final params = <String, dynamic>{'input': input, 'key': GoogleApiKeys.mapsWebApiKey, 'language': 'tr', 'components': 'country:tr'};
       if (_currentLocation != null) {
         params['location'] = '${_currentLocation!.latitude},${_currentLocation!.longitude}';
         params['radius'] = 50000;
@@ -173,13 +175,13 @@ class _CarrierHomeScreenState extends State<CarrierHomeScreen> {
     } catch (_) {}
   }
 
-  Future<void> _initCurrentLocation() async {
+  Future<void> _initCurrentLocation({bool userInitiated = false}) async {
     try {
-      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) return;
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.deniedForever || permission == LocationPermission.denied) return;
+      final ok = await LocationGate.ensureReady(
+        context: context,
+        userInitiated: userInitiated,
+      );
+      if (!ok) return;
       final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.medium, timeLimit: const Duration(seconds: 5));
       final latLng = LatLng(pos.latitude, pos.longitude);
       if (!mounted) return;
@@ -213,6 +215,18 @@ class _CarrierHomeScreenState extends State<CarrierHomeScreen> {
         }
       });
     } catch (_) {}
+  }
+
+  Future<void> _goToCurrentLocation() async {
+    if (_currentLocation == null) {
+      await _initCurrentLocation(userInitiated: true);
+      return;
+    }
+    _mapController?.animateCamera(
+      CameraUpdate.newCameraPosition(
+        CameraPosition(target: _currentLocation!, zoom: 14),
+      ),
+    );
   }
 
   Future<void> _showOfferDialog(String listingId, String title) async {
@@ -263,14 +277,6 @@ class _CarrierHomeScreenState extends State<CarrierHomeScreen> {
         ),
       );
     });
-  }
-
-  Future<void> _goToCurrentLocation() async {
-    if (_currentLocation == null) {
-      await _initCurrentLocation();
-      return;
-    }
-    _mapController?.animateCamera(CameraUpdate.newCameraPosition(CameraPosition(target: _currentLocation!, zoom: 14)));
   }
 
   Future<void> _openOffersSheet(String listingId, String title) async {
@@ -367,7 +373,7 @@ class _CarrierHomeScreenState extends State<CarrierHomeScreen> {
 
   Future<void> _onPlaceSelected(String placeId, String description) async {
     try {
-      final response = await _dio.get('https://maps.googleapis.com/maps/api/place/details/json', queryParameters: <String, dynamic>{'place_id': placeId, 'key': 'AIzaSyBJu0tWf3dKoJV6m5r_tp02sOYSOUpgCV0', 'fields': 'geometry/location'});
+      final response = await _dio.get('https://maps.googleapis.com/maps/api/place/details/json', queryParameters: <String, dynamic>{'place_id': placeId, 'key': GoogleApiKeys.mapsWebApiKey, 'fields': 'geometry/location'});
       final data = response.data is Map<String, dynamic> ? response.data as Map<String, dynamic> : jsonDecode(response.data as String) as Map<String, dynamic>;
       final location = (data['result']?['geometry']?['location']) as Map<String, dynamic>?;
       if (location == null) return;

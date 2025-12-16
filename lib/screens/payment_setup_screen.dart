@@ -84,21 +84,24 @@ class _PaymentSetupScreenState extends State<PaymentSetupScreen> {
           Step(
             title: const Text('Yöntem Seç'),
             isActive: _step >= 0,
-            content: Column(
-              children: [
-                RadioListTile<String>(
-                  value: 'card',
-                  groupValue: _method,
-                  onChanged: (v) => setState(() => _method = v ?? 'card'),
-                  title: const Text('Kart'),
-                ),
-                RadioListTile<String>(
-                  value: 'bank',
-                  groupValue: _method,
-                  onChanged: (v) => setState(() => _method = v ?? 'bank'),
-                  title: const Text('Banka/IBAN'),
-                ),
-              ],
+            content: RadioGroup<String>(
+              groupValue: _method,
+              onChanged: (v) {
+                if (v == null) return;
+                setState(() => _method = v);
+              },
+              child: const Column(
+                children: [
+                  RadioListTile<String>(
+                    value: 'card',
+                    title: Text('Kart'),
+                  ),
+                  RadioListTile<String>(
+                    value: 'bank',
+                    title: Text('Banka/IBAN'),
+                  ),
+                ],
+              ),
             ),
           ),
           Step(

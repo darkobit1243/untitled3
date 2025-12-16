@@ -25,8 +25,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
               borderRadius: BorderRadius.circular(16),
               boxShadow: [
                 BoxShadow(
-                  // ignore: deprecated_member_use
-                  color: Colors.black.withOpacity(0.04),
+                  color: Colors.black.withValues(alpha: 0.04),
                   blurRadius: 12,
                   offset: const Offset(0, 4),
                 ),
@@ -36,7 +35,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
               children: [
                 SwitchListTile(
                   value: _twoFactorEnabled,
-                  activeColor: TrustShipColors.primaryRed,
+                  activeThumbColor: TrustShipColors.primaryRed,
                   title: const Text('2 Adımlı Doğrulama (2FA)'),
                   subtitle: const Text(
                     'Hesabını ek bir doğrulama adımıyla koru.',

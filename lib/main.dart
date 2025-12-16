@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'dart:ui';
 
 import 'screens/login_screen.dart';
 import 'screens/main_wrapper.dart';
@@ -11,12 +12,25 @@ import 'theme/trustship_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  if (kEnableFirebasePush) {
-    try {
-      await Firebase.initializeApp();
-    } catch (_) {
-      // Firebase config may be missing in local/dev; app should still run.
+
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    debugPrint('FlutterError: ${details.exceptionAsString()}');
+    if (details.stack != null) {
+      debugPrintStack(stackTrace: details.stack);
     }
+  };
+
+  PlatformDispatcher.instance.onError = (error, stack) {
+    debugPrint('Uncaught async error: $error');
+    debugPrintStack(stackTrace: stack);
+    return true;
+  };
+
+  try {
+    await Firebase.initializeApp();
+  } catch (_) {
+    // Firebase config may be missing in local/dev; app should still run.
   }
   runApp(const TrustShipApp());
 }

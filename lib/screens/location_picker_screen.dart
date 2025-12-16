@@ -14,8 +14,8 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
-// REST (Places / Directions) için özel key (yalnızca HTTP istekleri için)
-const String _googleApiKey = 'AIzaSyBJu0tWf3dKoJV6m5r_tp02sOYSOUpgCV0';
+import '../services/google_api_keys.dart';
+import '../services/location_gate.dart';
 
 class LocationResult {
   final LatLng position;
@@ -225,7 +225,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
       _placesCancelToken = CancelToken();
       final params = <String, dynamic>{
         'input': input,
-        'key': _googleApiKey,
+        'key': GoogleApiKeys.mapsWebApiKey,
         'language': 'tr',
         'components': 'country:tr',
       };
@@ -262,7 +262,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
         'https://maps.googleapis.com/maps/api/place/details/json',
         queryParameters: <String, dynamic>{
           'place_id': placeId,
-          'key': _googleApiKey,
+          'key': GoogleApiKeys.mapsWebApiKey,
           'fields': 'geometry/location',
         },
       );
@@ -304,22 +304,17 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     }
   }
 
-  Future<void> _initCurrentLocation() async {
+  Future<void> _initCurrentLocation({bool userInitiated = false}) async {
     try {
-      await _setLastKnownLocation();
       _currentLocationCancelToken?.cancel();
       _currentLocationCancelToken = CancelToken();
-      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) return;
+      final ok = await LocationGate.ensureReady(
+        context: context,
+        userInitiated: userInitiated,
+      );
+      if (!ok) return;
 
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        return;
-      }
+      await _setLastKnownLocation();
 
       final pos = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.medium,
@@ -339,19 +334,23 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
 
   Future<void> _setLastKnownLocation() async {
     if (_currentLocation != null) return;
-    final last = await Geolocator.getLastKnownPosition();
-    if (last == null) return;
-    _currentLocation = LatLng(last.latitude, last.longitude);
-    _mapController?.moveCamera(
-      CameraUpdate.newCameraPosition(
-        CameraPosition(target: _currentLocation!, zoom: 12),
-      ),
-    );
+    try {
+      final last = await Geolocator.getLastKnownPosition();
+      if (last == null) return;
+      _currentLocation = LatLng(last.latitude, last.longitude);
+      _mapController?.moveCamera(
+        CameraUpdate.newCameraPosition(
+          CameraPosition(target: _currentLocation!, zoom: 13),
+        ),
+      );
+    } catch (_) {
+      // Sessiz geç
+    }
   }
 
   Future<void> _goToCurrent() async {
     if (_currentLocation == null) {
-      await _ensureCurrentLocation();
+      await _ensureCurrentLocation(userInitiated: true);
     }
     if (_currentLocation != null) {
       await _mapController?.animateCamera(
@@ -362,7 +361,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     }
   }
 
-  Future<void> _ensureCurrentLocation() async {
+  Future<void> _ensureCurrentLocation({bool userInitiated = false}) async {
     if (_currentLocation != null) return;
     final last = await Geolocator.getLastKnownPosition();
     if (last != null) {
@@ -374,7 +373,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
       );
       return;
     }
-    await _initCurrentLocation();
+    await _initCurrentLocation(userInitiated: userInitiated);
   }
 
   void _confirmSelection() {

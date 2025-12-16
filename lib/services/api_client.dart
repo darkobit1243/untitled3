@@ -120,6 +120,55 @@ class ApiClient {
     await setPreferredRole(r);
   }
 
+  /// SMS doğrulama (Firebase Phone Auth) sonrası backend'e kayıt.
+  ///
+  /// Backend, `Authorization: Bearer <firebase_id_token>` ile gelen Firebase ID token'ı doğrular;
+  /// doğrulama başarılıysa kullanıcıyı DB'ye kaydeder ve kendi JWT token'ını döner.
+  Future<void> registerWithFirebaseIdToken(
+    String firebaseIdToken, {
+    required String role,
+    required String password,
+    required Map<String, dynamic> profile,
+    String? email,
+  }) async {
+    final payload = <String, dynamic>{
+      'role': role,
+      'password': password,
+    };
+
+    if (email != null && email.trim().isNotEmpty) {
+      payload['email'] = email.trim();
+    }
+
+    // Profile alanlarını payload'a merge et (fullName, address, vehicleType, ...)
+    for (final entry in profile.entries) {
+      final value = entry.value;
+      if (value == null) continue;
+      if (value is String && value.trim().isEmpty) continue;
+      payload[entry.key] = value;
+    }
+
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer $firebaseIdToken',
+    };
+
+    final resp = await _client.post(
+      Uri.parse('$_baseUrl/auth/register'),
+      headers: headers,
+      body: jsonEncode(payload),
+    );
+    if (resp.statusCode >= 400) {
+      throw Exception('Kayıt başarısız: ${resp.body}');
+    }
+
+    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    final token = data['token'] as String;
+    final r = (data['role'] as String?) ?? role;
+    setToken(token);
+    await setPreferredRole(r);
+  }
+
   Future<String> login(String email, String password) async {
     final resp = await _client.post(
       Uri.parse('$_baseUrl/auth/login'),
@@ -461,6 +510,72 @@ class ApiClient {
       throw Exception('Konum güncelleme başarısız: ${resp.body}');
     }
     return jsonDecode(resp.body) as Map<String, dynamic>;
+  }
+
+  // RATINGS
+  Future<Map<String, dynamic>> createRating({
+    required String deliveryId,
+    required int score,
+    String? comment,
+  }) async {
+    await _getUserIdAndRole();
+
+    final trimmed = comment?.trim();
+    final resp = await _client.post(
+      Uri.parse('$_baseUrl/ratings'),
+      headers: _headers(),
+      body: jsonEncode(<String, dynamic>{
+        'deliveryId': deliveryId,
+        'score': score,
+        if (trimmed != null && trimmed.isNotEmpty) 'comment': trimmed,
+      }),
+    );
+
+    if (resp.statusCode == 409) {
+      throw Exception('Bu teslimat için daha önce puan verdin.');
+    }
+    if (resp.statusCode >= 400) {
+      throw Exception('Puan gönderilemedi: ${resp.body}');
+    }
+    return jsonDecode(resp.body) as Map<String, dynamic>;
+  }
+
+  Future<double> fetchAverageRating(String userId) async {
+    final resp = await _client.get(
+      Uri.parse('$_baseUrl/ratings/average/$userId'),
+      headers: _headers(),
+    );
+    if (resp.statusCode >= 400) {
+      throw Exception('Ortalama puan alınamadı: ${resp.body}');
+    }
+    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    final avg = data['average'];
+    if (avg == null) return 0;
+    if (avg is num) return avg.toDouble();
+    return double.tryParse(avg.toString()) ?? 0;
+  }
+
+  Future<List<dynamic>> fetchUserRatings(String userId) async {
+    final resp = await _client.get(
+      Uri.parse('$_baseUrl/ratings/user/$userId'),
+      headers: _headers(),
+    );
+    if (resp.statusCode >= 400) {
+      throw Exception('Puanlar alınamadı: ${resp.body}');
+    }
+    return jsonDecode(resp.body) as List<dynamic>;
+  }
+
+  Future<List<dynamic>> fetchMyGivenRatings() async {
+    await _getUserIdAndRole();
+    final resp = await _client.get(
+      Uri.parse('$_baseUrl/ratings/mine'),
+      headers: _headers(),
+    );
+    if (resp.statusCode >= 400) {
+      throw Exception('Verdiğin puanlar alınamadı: ${resp.body}');
+    }
+    return jsonDecode(resp.body) as List<dynamic>;
   }
 
   void followDeliveryUpdates(String deliveryId, void Function(dynamic) handler) {

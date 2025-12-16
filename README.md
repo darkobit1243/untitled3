@@ -14,3 +14,12 @@ A few resources to get you started if this is your first Flutter project:
 For help getting started with Flutter development, view the
 [online documentation](https://docs.flutter.dev/), which offers tutorials,
 samples, guidance on mobile development, and a full API reference.
+
+## Google API Key (Places/Directions/Geocode)
+
+Bu projede bazı ekranlar Google Places/Directions/Geocode REST endpoint’lerini çağırır.
+API key repo içine gömülü değildir; çalıştırırken `--dart-define` ile verilir:
+
+- `flutter run --dart-define=GOOGLE_MAPS_WEB_API_KEY=YOUR_KEY`
+
+Not: Key’i Google Cloud Console’da mümkün olduğunca kısıtlayın (API bazında ve uygulama/bundle bazında).

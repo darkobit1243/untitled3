@@ -3,6 +3,7 @@ import 'package:geolocator/geolocator.dart';
 import 'dart:async';
 
 import '../services/api_client.dart';
+import '../services/location_gate.dart';
 import 'live_tracking_screen.dart';
 import 'qr_scan_screen.dart';
 import '../theme/trustship_theme.dart';
@@ -17,6 +18,8 @@ class CarrierDeliveriesScreen extends StatefulWidget {
 class _CarrierDeliveriesScreenState extends State<CarrierDeliveriesScreen> {
   bool _loading = true;
   List<dynamic> _items = [];
+
+  final Set<String> _ratedDeliveryIds = <String>{};
 
   final Map<String, Timer> _autoTrackTimers = <String, Timer>{};
   bool _locationPermissionChecked = false;
@@ -43,8 +46,25 @@ class _CarrierDeliveriesScreenState extends State<CarrierDeliveriesScreen> {
     });
     try {
       final data = await apiClient.fetchCarrierDeliveries();
+
+      final ratedIds = <String>{};
+      try {
+        final mine = await apiClient.fetchMyGivenRatings();
+        for (final r in mine) {
+          if (r is Map<String, dynamic>) {
+            final deliveryId = r['deliveryId']?.toString() ?? '';
+            if (deliveryId.isNotEmpty) ratedIds.add(deliveryId);
+          }
+        }
+      } catch (_) {
+        // Ignore
+      }
+
       setState(() {
         _items = data;
+        _ratedDeliveryIds
+          ..clear()
+          ..addAll(ratedIds);
       });
       _syncAutoTracking();
     } catch (e) {
@@ -59,6 +79,124 @@ class _CarrierDeliveriesScreenState extends State<CarrierDeliveriesScreen> {
         });
       }
     }
+  }
+
+  Future<void> _showRatingDialog({required String deliveryId, required String listingId}) async {
+    final commentController = TextEditingController();
+    int score = 5;
+    bool submitting = false;
+    String? error;
+
+    final messenger = ScaffoldMessenger.of(context);
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            Future<void> submit() async {
+              if (submitting) return;
+              setDialogState(() {
+                submitting = true;
+                error = null;
+              });
+              try {
+                await apiClient.createRating(
+                  deliveryId: deliveryId,
+                  score: score,
+                  comment: commentController.text,
+                );
+                if (!dialogContext.mounted) return;
+                Navigator.of(dialogContext).pop();
+                if (!mounted) return;
+                messenger.showSnackBar(const SnackBar(content: Text('Puanın kaydedildi.')));
+                await _load();
+              } catch (e) {
+                setDialogState(() {
+                  error = e.toString();
+                });
+              } finally {
+                setDialogState(() {
+                  submitting = false;
+                });
+              }
+            }
+
+            Widget star(int i) {
+              final selected = i <= score;
+              return IconButton(
+                onPressed: submitting
+                    ? null
+                    : () {
+                        setDialogState(() {
+                          score = i;
+                        });
+                      },
+                icon: Icon(
+                  selected ? Icons.star : Icons.star_border,
+                  color: TrustShipColors.warningOrange,
+                ),
+              );
+            }
+
+            return AlertDialog(
+              title: Text('Puan Ver: $listingId'),
+              content: SizedBox(
+                width: 420,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text('Göndericiyi değerlendir', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [star(1), star(2), star(3), star(4), star(5)],
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: commentController,
+                      enabled: !submitting,
+                      maxLines: 3,
+                      decoration: const InputDecoration(
+                        hintText: 'Yorum (opsiyonel)',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    if (error != null) ...[
+                      const SizedBox(height: 10),
+                      Text(
+                        error!,
+                        style: const TextStyle(color: Colors.red, fontSize: 12),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: submitting ? null : () => Navigator.of(dialogContext).pop(),
+                  child: const Text('İptal'),
+                ),
+                ElevatedButton(
+                  onPressed: submitting ? null : submit,
+                  style: ElevatedButton.styleFrom(backgroundColor: TrustShipColors.primaryRed),
+                  child: submitting
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Text('Gönder'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    commentController.dispose();
   }
 
   @override
@@ -187,6 +325,16 @@ class _CarrierDeliveriesScreenState extends State<CarrierDeliveriesScreen> {
                                     ),
                                   ],
                                 ),
+                              if (status == 'delivered')
+                                TextButton(
+                                  onPressed: _ratedDeliveryIds.contains(id)
+                                      ? null
+                                      : () => _showRatingDialog(deliveryId: id, listingId: listingId),
+                                  child: Text(
+                                    _ratedDeliveryIds.contains(id) ? 'Puanlandı' : 'Puan Ver',
+                                    style: const TextStyle(fontSize: 11),
+                                  ),
+                                ),
                             ],
                           ),
                         ),
@@ -303,26 +451,11 @@ class _CarrierDeliveriesScreenState extends State<CarrierDeliveriesScreen> {
 
   Future<void> _sendLocation(String deliveryId) async {
     try {
-      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Konum servisleri kapalı.')),
-        );
-        return;
-      }
-
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Konum izni gerekli.')),
-        );
-        return;
-      }
+      final ok = await LocationGate.ensureReady(
+        context: context,
+        userInitiated: true,
+      );
+      if (!ok) return;
 
       final pos = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.medium,

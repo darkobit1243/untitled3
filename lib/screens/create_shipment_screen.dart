@@ -12,10 +12,9 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../services/api_client.dart';
+import '../services/google_api_keys.dart';
+import '../services/location_gate.dart';
 import 'location_picker_screen.dart';
-
-// REST (Places / Directions) için özel key (yalnızca HTTP istekleri için)
-const String _googleApiKey = 'AIzaSyBJu0tWf3dKoJV6m5r_tp02sOYSOUpgCV0';
 
 class CreateShipmentScreen extends StatefulWidget {
   const CreateShipmentScreen({super.key});
@@ -338,7 +337,7 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
       _createListing();
     }
   }
-
+              
   String _inferMimeTypeFromPath(String path) {
     final lower = path.toLowerCase();
     if (lower.endsWith('.png')) return 'image/png';
@@ -424,19 +423,13 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
 
   // --- Konum & Google Places / Directions helper'ları ---
 
-  Future<void> _initCurrentLocation() async {
+  Future<void> _initCurrentLocation({bool userInitiated = false}) async {
     try {
-      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) return;
-
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.deniedForever ||
-          permission == LocationPermission.denied) {
-        return;
-      }
+      final ok = await LocationGate.ensureReady(
+        context: context,
+        userInitiated: userInitiated,
+      );
+      if (!ok) return;
 
       await _setLastKnownLocation();
       final pos = await Geolocator.getCurrentPosition(
@@ -472,7 +465,7 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
 
   Future<void> _goToCurrentLocation() async {
     if (_currentLocation == null) {
-      await _ensureCurrentLocation();
+      await _ensureCurrentLocation(userInitiated: true);
     }
     if (_mapController != null && _currentLocation != null) {
       await _mapController!.animateCamera(
@@ -483,8 +476,14 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
     }
   }
 
-  Future<void> _ensureCurrentLocation() async {
+  Future<void> _ensureCurrentLocation({bool userInitiated = false}) async {
     if (_currentLocation != null) return;
+    final ok = await LocationGate.ensureReady(
+      context: context,
+      userInitiated: userInitiated,
+    );
+    if (!ok) return;
+
     final last = await Geolocator.getLastKnownPosition();
     if (last != null) {
       _currentLocation = LatLng(last.latitude, last.longitude);
@@ -496,7 +495,7 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
       );
       return;
     }
-    await _initCurrentLocation();
+    await _initCurrentLocation(userInitiated: userInitiated);
   }
 
   void _updateMarkersAndRoute() {
@@ -545,12 +544,16 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
 
   Future<void> _drawRoute(LatLng origin, LatLng destination) async {
     try {
+      assert(
+        GoogleApiKeys.mapsWebApiKey.isNotEmpty,
+        'Missing GOOGLE_MAPS_WEB_API_KEY (pass via --dart-define).',
+      );
       final response = await _dio.get(
         'https://maps.googleapis.com/maps/api/directions/json',
         queryParameters: <String, dynamic>{
           'origin': '${origin.latitude},${origin.longitude}',
           'destination': '${destination.latitude},${destination.longitude}',
-          'key': _googleApiKey,
+          'key': GoogleApiKeys.mapsWebApiKey,
         },
       );
 

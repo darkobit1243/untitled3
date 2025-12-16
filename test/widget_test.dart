@@ -1,33 +1,23 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:untitled/main.dart';
+import 'package:untitled/screens/login_screen.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp() as Widget);
+  TestWidgetsFlutterBinding.ensureInitialized();
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+  testWidgets('App boots and shows login when logged out', (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+    await tester.pumpWidget(const TrustShipApp());
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    // First frame: session is still being checked.
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+    // After async session check: token is missing -> LoginScreen.
+    await tester.pumpAndSettle();
+    expect(find.byType(LoginScreen), findsOneWidget);
   });
-}
-
-class MyApp {
-  const MyApp();
 }

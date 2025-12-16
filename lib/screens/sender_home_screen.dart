@@ -6,6 +6,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../services/api_client.dart';
+import '../services/google_api_keys.dart';
+import '../services/location_gate.dart';
 import '../theme/trustship_theme.dart';
 import '../widgets/Home_screen_widgets/home_screen_widgets.dart';
 import 'create_shipment_screen.dart';
@@ -138,7 +140,7 @@ class _SenderHomeScreenState extends State<SenderHomeScreen> {
     try {
       _placesCancelToken?.cancel();
       _placesCancelToken = CancelToken();
-      final params = <String, dynamic>{'input': input, 'key': 'AIzaSyBJu0tWf3dKoJV6m5r_tp02sOYSOUpgCV0', 'language': 'tr', 'components': 'country:tr'};
+      final params = <String, dynamic>{'input': input, 'key': GoogleApiKeys.mapsWebApiKey, 'language': 'tr', 'components': 'country:tr'};
       if (_currentLocation != null) {
         params['location'] = '${_currentLocation!.latitude},${_currentLocation!.longitude}';
         params['radius'] = 50000;
@@ -151,13 +153,13 @@ class _SenderHomeScreenState extends State<SenderHomeScreen> {
     } catch (_) {}
   }
 
-  Future<void> _initCurrentLocation() async {
+  Future<void> _initCurrentLocation({bool userInitiated = false}) async {
     try {
-      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) return;
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.deniedForever || permission == LocationPermission.denied) return;
+      final ok = await LocationGate.ensureReady(
+        context: context,
+        userInitiated: userInitiated,
+      );
+      if (!ok) return;
       final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.medium, timeLimit: const Duration(seconds: 5));
       final latLng = LatLng(pos.latitude, pos.longitude);
       if (!mounted) return;
@@ -196,7 +198,7 @@ class _SenderHomeScreenState extends State<SenderHomeScreen> {
 
   Future<void> _goToCurrentLocation() async {
     if (_currentLocation == null) {
-      await _initCurrentLocation();
+      await _initCurrentLocation(userInitiated: true);
       return;
     }
     _mapController?.animateCamera(CameraUpdate.newCameraPosition(CameraPosition(target: _currentLocation!, zoom: 14)));
@@ -222,7 +224,7 @@ class _SenderHomeScreenState extends State<SenderHomeScreen> {
 
   Future<void> _onPlaceSelected(String placeId, String description) async {
     try {
-      final response = await _dio.get('https://maps.googleapis.com/maps/api/place/details/json', queryParameters: <String, dynamic>{'place_id': placeId, 'key': 'AIzaSyBJu0tWf3dKoJV6m5r_tp02sOYSOUpgCV0', 'fields': 'geometry/location'});
+      final response = await _dio.get('https://maps.googleapis.com/maps/api/place/details/json', queryParameters: <String, dynamic>{'place_id': placeId, 'key': GoogleApiKeys.mapsWebApiKey, 'fields': 'geometry/location'});
       final data = response.data is Map<String, dynamic> ? response.data as Map<String, dynamic> : jsonDecode(response.data as String) as Map<String, dynamic>;
       final location = (data['result']?['geometry']?['location']) as Map<String, dynamic>?;
       if (location == null) return;
@@ -240,7 +242,7 @@ class _SenderHomeScreenState extends State<SenderHomeScreen> {
 
   Future<String?> _reverseGeocode(LatLng position) async {
     try {
-      final response = await _dio.get('https://maps.googleapis.com/maps/api/geocode/json', queryParameters: <String, dynamic>{'latlng': '${position.latitude},${position.longitude}', 'key': 'AIzaSyBJu0tWf3dKoJV6m5r_tp02sOYSOUpgCV0', 'language': 'tr'});
+      final response = await _dio.get('https://maps.googleapis.com/maps/api/geocode/json', queryParameters: <String, dynamic>{'latlng': '${position.latitude},${position.longitude}', 'key': GoogleApiKeys.mapsWebApiKey, 'language': 'tr'});
       final data = response.data is Map<String, dynamic> ? response.data as Map<String, dynamic> : jsonDecode(response.data as String) as Map<String, dynamic>;
       final results = data['results'] as List<dynamic>?;
       if (results == null || results.isEmpty) return null;
