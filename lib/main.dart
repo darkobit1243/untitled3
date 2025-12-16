@@ -32,16 +32,16 @@ Future<void> main() async {
   } catch (_) {
     // Firebase config may be missing in local/dev; app should still run.
   }
-  runApp(const TrustShipApp());
+  runApp(const BiTasiApp());
 }
 
-class TrustShipApp extends StatelessWidget {
-  const TrustShipApp({super.key});
+class BiTasiApp extends StatelessWidget {
+  const BiTasiApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'TrustShip',
+      title: 'BiTaşı',
       debugShowCheckedModeBanner: false,
       theme: buildTrustShipTheme(),
       navigatorKey: appNavigatorKey,

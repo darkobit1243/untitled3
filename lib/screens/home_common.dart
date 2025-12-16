@@ -1,6 +1,26 @@
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+
+const String kCargoPinAssetPath = 'assets/markers/cargo_pin.png';
+
+Future<BitmapDescriptor> createCargoPinMarkerBitmapDescriptor({
+  int size = 86,
+  Color fallbackColor = const Color(0xFFFF9800),
+}) async {
+  try {
+    // Ensure the asset exists; BitmapDescriptor.asset may fail silently on some platforms
+    // when the asset path is wrong.
+    await rootBundle.load(kCargoPinAssetPath);
+    return BitmapDescriptor.asset(
+      ImageConfiguration(size: Size(size.toDouble(), size.toDouble())),
+      kCargoPinAssetPath,
+    );
+  } catch (_) {
+    return createCargoBoxMarkerBitmapDescriptor(fallbackColor, size: size);
+  }
+}
 
 Future<BitmapDescriptor> createMarkerBitmapDescriptor(Color color, {int size = 96}) async {
   final recorder = ui.PictureRecorder();
@@ -58,7 +78,7 @@ Future<BitmapDescriptor> createSmallLocationMarkerBitmapDescriptor({Color color 
   return BitmapDescriptor.bytes(bytes);
 }
 
-Future<BitmapDescriptor> createCargoBoxMarkerBitmapDescriptor(Color color, {int size = 110}) async {
+Future<BitmapDescriptor> createCargoBoxMarkerBitmapDescriptor(Color color, {int size = 86}) async {
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder, Rect.fromLTWH(0, 0, size.toDouble(), size.toDouble()));
 

@@ -11,7 +11,7 @@ void main() {
   testWidgets('App boots and shows login when logged out', (WidgetTester tester) async {
     SharedPreferences.setMockInitialValues(<String, Object>{});
 
-    await tester.pumpWidget(const TrustShipApp());
+    await tester.pumpWidget(const BiTasiApp());
 
     // First frame: session is still being checked.
     expect(find.byType(CircularProgressIndicator), findsOneWidget);

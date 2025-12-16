@@ -9,6 +9,8 @@ import '../theme/trustship_theme.dart';
 import 'auth_flow_screen.dart';
 import 'main_wrapper.dart'; // Giriş başarılı olursa buraya gidecek
 
+const String kLoginLogoAssetPath = 'assets/branding/app_logo.png';
+
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -74,47 +76,54 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 480),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
                 // Logo & Hero
                 Column(
-                  children: const [
-                    SizedBox(height: 12),
-                    CircleAvatar(
-                      radius: 30,
-                      backgroundColor: TrustShipColors.primaryRed,
-                      child: Icon(
+                  children: [
+                    const SizedBox(height: 4),
+                    Image.asset(
+                      kLoginLogoAssetPath,
+                      width: 112,
+                      height: 112,
+                      fit: BoxFit.contain,
+                      filterQuality: FilterQuality.high,
+                      semanticLabel: 'BiTaşı logo',
+                      errorBuilder: (_, __, ___) => const Icon(
                         Icons.local_shipping_outlined,
-                        size: 32,
-                        color: Colors.white,
+                        size: 64,
+                        color: TrustShipColors.primaryRed,
                       ),
                     ),
-                    SizedBox(height: 12),
-                    Text(
+                    const SizedBox(height: 10),
+                    const Text(
                       'BiTaşı',
                       style: TextStyle(
                         fontSize: 28,
                         fontWeight: FontWeight.w700,
                         color: TrustShipColors.primaryRed,
+                        letterSpacing: 0.2,
                       ),
                     ),
-                    SizedBox(height: 4),
-                    Text(
+                    const SizedBox(height: 4),
+                    const Text(
                       'Eşler arası güvenli lojistik platformu',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 13,
-                        color: Colors.grey,
+                        color: TrustShipColors.textDarkGrey,
                       ),
                     ),
                   ],
                 ),
 
-                const SizedBox(height: 16),
+                const SizedBox(height: 18),
 
                 // Trust badges
                 Row(
@@ -130,34 +139,48 @@ class _LoginScreenState extends State<LoginScreen> {
                   ],
                 ),
 
-                const SizedBox(height: 24),
+                const SizedBox(height: 22),
 
                 // Login Card
                 ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 420),
                   child: Card(
-                    elevation: 8,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
+                    clipBehavior: Clip.antiAlias,
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          const Text(
+                            'Giriş Yap',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                              color: TrustShipColors.textDarkGrey,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          const Text(
+                            'Hesabına erişmek için bilgilerini gir.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
                           if (_error != null) ...[
                             Container(
                               padding: const EdgeInsets.all(12),
                               margin: const EdgeInsets.only(bottom: 12),
                               decoration: BoxDecoration(
-                                color: Colors.red.shade50,
+                                color: TrustShipColors.errorRed.withAlpha(20),
                                 borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: Colors.red.shade200),
+                                border: Border.all(color: TrustShipColors.errorRed.withAlpha(64)),
                               ),
                               child: Text(
                                 _error!,
-                                style: const TextStyle(color: Colors.red, fontSize: 13),
+                                style: const TextStyle(color: TrustShipColors.errorRed, fontSize: 13),
                               ),
                             ),
                           ],
@@ -295,11 +318,12 @@ class _LoginScreenState extends State<LoginScreen> {
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 11,
-                      color: Colors.grey,
+                      color: TrustShipColors.textDarkGrey,
                     ),
                   ),
                 ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

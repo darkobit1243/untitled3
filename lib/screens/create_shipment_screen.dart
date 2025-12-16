@@ -14,6 +14,7 @@ import 'package:image_picker/image_picker.dart';
 import '../services/api_client.dart';
 import '../services/google_api_keys.dart';
 import '../services/location_gate.dart';
+import 'home_common.dart';
 import 'location_picker_screen.dart';
 
 class CreateShipmentScreen extends StatefulWidget {
@@ -47,6 +48,8 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
   final Set<Marker> _markers = {};
   final Set<Polyline> _polylines = {};
 
+  BitmapDescriptor? _cargoPinIcon;
+
   // (Autocomplete bu ekranda değil, tam ekran LocationPicker'da yapılıyor)
 
   static const CameraPosition _fallbackCamera = CameraPosition(
@@ -57,7 +60,23 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _initCurrentLocation());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initCurrentLocation();
+      _prepareMarkerIcons();
+    });
+  }
+
+  Future<void> _prepareMarkerIcons() async {
+    try {
+      final icon = await createCargoPinMarkerBitmapDescriptor(size: 86);
+      if (!mounted) return;
+      setState(() {
+        _cargoPinIcon = icon;
+      });
+      _updateMarkersAndRoute();
+    } catch (_) {
+      // ignore
+    }
   }
 
   @override
@@ -519,6 +538,7 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
             markerId: const MarkerId('pickup'),
             position: _pickupLocation!,
             infoWindow: const InfoWindow(title: 'Alış Noktası'),
+            icon: _cargoPinIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
           ),
         );
       }
@@ -529,7 +549,7 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
             markerId: const MarkerId('dropoff'),
             position: _dropoffLocation!,
             infoWindow: const InfoWindow(title: 'Teslim Noktası'),
-            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+            icon: _cargoPinIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
           ),
         );
       }

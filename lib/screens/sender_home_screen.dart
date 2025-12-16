@@ -57,7 +57,7 @@ class _SenderHomeScreenState extends State<SenderHomeScreen> {
   Future<void> _prepareMarkerIcons() async {
     try {
       final curr = await createSmallLocationMarkerBitmapDescriptor(color: const Color(0xFF2196F3));
-      final list = await createCargoBoxMarkerBitmapDescriptor(const Color(0xFFFF9800));
+      final list = await createCargoPinMarkerBitmapDescriptor(size: 86, fallbackColor: const Color(0xFFFF9800));
       if (mounted) {
         setState(() {
           _currentLocationIcon = curr;

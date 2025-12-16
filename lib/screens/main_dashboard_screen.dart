@@ -46,7 +46,7 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
             Icon(Icons.local_shipping, color: TrustShipColors.primaryRed),
             const SizedBox(width: 8),
             const Text(
-              'TrustShip',
+              'BiTaşı',
               style: TextStyle(fontWeight: FontWeight.w700),
             ),
           ],
