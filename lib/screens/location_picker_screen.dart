@@ -7,7 +7,6 @@
 // - "Bu noktayı seç" ile geri dön
 
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -15,7 +14,10 @@ import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../services/google_api_keys.dart';
+import '../services/google_places_service.dart';
 import '../services/location_gate.dart';
+
+enum LocationPickerMarkerKind { pickup, dropoff }
 
 class LocationResult {
   final LatLng position;
@@ -32,10 +34,12 @@ class LocationPickerScreen extends StatefulWidget {
     super.key,
     required this.title,
     this.initialPosition,
+    required this.markerKind,
   });
 
   final String title;
   final LatLng? initialPosition;
+  final LocationPickerMarkerKind markerKind;
 
   @override
   State<LocationPickerScreen> createState() => _LocationPickerScreenState();
@@ -43,13 +47,22 @@ class LocationPickerScreen extends StatefulWidget {
 
 class _LocationPickerScreenState extends State<LocationPickerScreen> {
   final Dio _dio = Dio();
+  late final GooglePlacesService _places = GooglePlacesService(_dio);
   CancelToken? _placesCancelToken;
   CancelToken? _currentLocationCancelToken;
   GoogleMapController? _mapController;
 
+  static Future<BitmapDescriptor>? _pickupIconFuture;
+  static Future<BitmapDescriptor>? _dropoffIconFuture;
+  BitmapDescriptor? _markerIcon;
+  LatLng? _pendingCameraTarget;
+  double? _pendingCameraZoom;
+
   final TextEditingController _searchController = TextEditingController();
   List<dynamic> _predictions = [];
+  String? _searchError;
   Timer? _debounce;
+  int _predictionRequestSeq = 0;
 
   LatLng? _currentLocation;
   LatLng? _selectedPosition;
@@ -64,15 +77,57 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
   @override
   void initState() {
     super.initState();
+    _warmMarkerIcon();
     WidgetsBinding.instance.addPostFrameCallback((_) => _initCurrentLocation());
   }
 
   @override
   void dispose() {
     _debounce?.cancel();
+    _placesCancelToken?.cancel();
+    _currentLocationCancelToken?.cancel();
     _searchController.dispose();
     _mapController?.dispose();
     super.dispose();
+  }
+
+  void _warmMarkerIcon() {
+    const markerSize = 56.0;
+    const config = ImageConfiguration(
+      size: Size(markerSize, markerSize),
+    );
+    _pickupIconFuture ??= BitmapDescriptor.asset(
+      config,
+      'assets/markers/Alis_noktasi.png',
+    );
+    _dropoffIconFuture ??= BitmapDescriptor.asset(
+      config,
+      'assets/markers/Varis_noktasi.png',
+    );
+
+    final future = widget.markerKind == LocationPickerMarkerKind.pickup
+        ? _pickupIconFuture!
+        : _dropoffIconFuture!;
+
+    // ignore: unawaited_futures
+    future.then((icon) {
+      if (!mounted) return;
+      setState(() {
+        _markerIcon = icon;
+      });
+    }).catchError((_) {
+      // Fallback to default marker.
+    });
+  }
+
+  MarkerId get _selectedMarkerId {
+    return widget.markerKind == LocationPickerMarkerKind.pickup
+        ? const MarkerId('Alis_noktasi')
+        : const MarkerId('Varis_noktasi');
+  }
+
+  String get _selectedMarkerTitle {
+    return widget.markerKind == LocationPickerMarkerKind.pickup ? 'Alış Noktası' : 'Varış Noktası';
   }
 
   @override
@@ -107,6 +162,14 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
               },
             ),
           ),
+          if (_searchError != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Text(
+                _searchError!,
+                style: const TextStyle(color: Colors.redAccent),
+              ),
+            ),
           if (_predictions.isNotEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -157,6 +220,19 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                   zoomControlsEnabled: false,
                   onMapCreated: (controller) {
                     _mapController = controller;
+
+                    // Apply any pending camera move (e.g., current location resolved before controller ready).
+                    final target = _pendingCameraTarget;
+                    final zoom = _pendingCameraZoom;
+                    if (target != null && zoom != null) {
+                      _pendingCameraTarget = null;
+                      _pendingCameraZoom = null;
+                      controller.moveCamera(
+                        CameraUpdate.newCameraPosition(
+                          CameraPosition(target: target, zoom: zoom),
+                        ),
+                      );
+                    }
                   },
                   onTap: (pos) {
                     setState(() {
@@ -165,8 +241,11 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                         ..clear()
                         ..add(
                           Marker(
-                            markerId: const MarkerId('selected'),
+                            markerId: _selectedMarkerId,
                             position: pos,
+                            icon: _markerIcon ?? BitmapDescriptor.defaultMarker,
+                            anchor: const Offset(0.5, 1.0),
+                            infoWindow: InfoWindow(title: _selectedMarkerTitle),
                           ),
                         );
                     });
@@ -211,8 +290,14 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     if (value.isEmpty) {
       setState(() {
         _predictions = [];
+        _searchError = null;
       });
       return;
+    }
+    if (_searchError != null) {
+      setState(() {
+        _searchError = null;
+      });
     }
     _debounce = Timer(const Duration(milliseconds: 250), () {
       _fetchPredictions(value);
@@ -220,88 +305,79 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
   }
 
   Future<void> _fetchPredictions(String input) async {
+    _placesCancelToken?.cancel();
+    _placesCancelToken = CancelToken();
+    final requestSeq = ++_predictionRequestSeq;
     try {
-      _placesCancelToken?.cancel();
-      _placesCancelToken = CancelToken();
-      final params = <String, dynamic>{
-        'input': input,
-        'key': GoogleApiKeys.mapsWebApiKey,
-        'language': 'tr',
-        'components': 'country:tr',
-      };
-
-      // Kullanıcının konumuna yakın sonuçları öne çıkar.
-      // strictbounds: radius dışındaki sonuçları bastırır (Samsun'dayken Adapazarı göstermesin gibi)
-      if (_currentLocation != null) {
-        params['location'] = '${_currentLocation!.latitude},${_currentLocation!.longitude}';
-        params['radius'] = 50000; // 50km
-        params['strictbounds'] = 'true';
-      }
-
-      final res = await _dio.get(
-        'https://maps.googleapis.com/maps/api/place/autocomplete/json',
-        queryParameters: params,
+      final bias = _currentLocation ?? widget.initialPosition;
+      final predictions = await _places.autocomplete(
+        input: input,
+        location: bias,
+        radiusMeters: 150000,
+        strictBounds: false,
         cancelToken: _placesCancelToken,
       );
-      final data = res.data is Map<String, dynamic>
-          ? res.data as Map<String, dynamic>
-          : jsonDecode(res.data as String) as Map<String, dynamic>;
-
       if (!mounted) return;
+      if (requestSeq != _predictionRequestSeq) return;
       setState(() {
-        _predictions = data['predictions'] as List<dynamic>? ?? [];
+        _predictions = predictions;
+        _searchError = null;
       });
-    } catch (_) {
-      // Sessiz geç
+    } catch (e) {
+      if (!mounted) return;
+      if (_placesCancelToken?.isCancelled == true) return;
+      if (requestSeq != _predictionRequestSeq) return;
+      setState(() {
+        _predictions = [];
+        if (e is GooglePlacesApiException) {
+          final details = (e.message ?? '').trim();
+          _searchError = details.isEmpty
+              ? 'Google Places hatası: ${e.status}'
+              : 'Google Places hatası: ${e.status}\n$details';
+          return;
+        }
+
+        final msg = e.toString();
+        if (msg.contains('Missing GOOGLE_MAPS_WEB_API_KEY')) {
+          _searchError =
+              'Harita araması için GOOGLE_MAPS_WEB_API_KEY eksik. (dart_defines.json / --dart-define-from-file)\n'
+              'Derlenmiş değer: ${GoogleApiKeys.mapsWebApiKeyMasked}\n'
+              'Not: hot restart yeni define almaz; uygulamayı durdurup tekrar çalıştır.';
+        } else if (msg.contains('REQUEST_DENIED')) {
+          _searchError = 'Google Places isteği reddedildi (API key/izinleri/billing kontrol).';
+        } else {
+          _searchError = 'Arama başarısız oldu. İnternet/izinleri kontrol et.';
+        }
+      });
     }
   }
 
   Future<void> _onPlaceSelected(String placeId, String description) async {
-    try {
-      final res = await _dio.get(
-        'https://maps.googleapis.com/maps/api/place/details/json',
-        queryParameters: <String, dynamic>{
-          'place_id': placeId,
-          'key': GoogleApiKeys.mapsWebApiKey,
-          'fields': 'geometry/location',
-        },
-      );
-      final data = res.data is Map<String, dynamic>
-          ? res.data as Map<String, dynamic>
-          : jsonDecode(res.data as String) as Map<String, dynamic>;
+    final pos = await _places.placeLatLng(placeId: placeId);
+    if (pos == null) return;
 
-      final loc =
-          (data['result']?['geometry']?['location']) as Map<String, dynamic>?;
-      if (loc == null) return;
+    setState(() {
+      _selectedPosition = pos;
+      _predictions = [];
+      _searchController.text = description;
+      _markers
+        ..clear()
+        ..add(
+          Marker(
+            markerId: _selectedMarkerId,
+            position: pos,
+            icon: _markerIcon ?? BitmapDescriptor.defaultMarker,
+            anchor: const Offset(0.5, 1.0),
+            infoWindow: InfoWindow(title: description),
+          ),
+        );
+    });
 
-      final pos = LatLng(
-        (loc['lat'] as num).toDouble(),
-        (loc['lng'] as num).toDouble(),
-      );
-
-      setState(() {
-        _selectedPosition = pos;
-        _predictions = [];
-        _searchController.text = description;
-        _markers
-          ..clear()
-          ..add(
-            Marker(
-              markerId: const MarkerId('selected'),
-              position: pos,
-              infoWindow: InfoWindow(title: description),
-            ),
-          );
-      });
-
-      await _mapController?.animateCamera(
-        CameraUpdate.newCameraPosition(
-          CameraPosition(target: pos, zoom: 14),
-        ),
-      );
-    } catch (_) {
-      // Sessiz geç
-    }
+    await _mapController?.animateCamera(
+      CameraUpdate.newCameraPosition(
+        CameraPosition(target: pos, zoom: 14),
+      ),
+    );
   }
 
   Future<void> _initCurrentLocation({bool userInitiated = false}) async {
@@ -320,11 +396,21 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
         desiredAccuracy: LocationAccuracy.medium,
         timeLimit: const Duration(seconds: 5),
       );
-      _currentLocation = LatLng(pos.latitude, pos.longitude);
+      if (!mounted) return;
+      setState(() {
+        _currentLocation = LatLng(pos.latitude, pos.longitude);
+      });
 
+      final target = _currentLocation;
+      if (target == null) return;
+      if (_mapController == null) {
+        _pendingCameraTarget = target;
+        _pendingCameraZoom = 13;
+        return;
+      }
       await _mapController?.animateCamera(
         CameraUpdate.newCameraPosition(
-          CameraPosition(target: _currentLocation!, zoom: 13),
+          CameraPosition(target: target, zoom: 13),
         ),
       );
     } catch (_) {
@@ -337,10 +423,21 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     try {
       final last = await Geolocator.getLastKnownPosition();
       if (last == null) return;
-      _currentLocation = LatLng(last.latitude, last.longitude);
+      if (!mounted) return;
+      setState(() {
+        _currentLocation = LatLng(last.latitude, last.longitude);
+      });
+
+      final target = _currentLocation;
+      if (target == null) return;
+      if (_mapController == null) {
+        _pendingCameraTarget = target;
+        _pendingCameraZoom = 13;
+        return;
+      }
       _mapController?.moveCamera(
         CameraUpdate.newCameraPosition(
-          CameraPosition(target: _currentLocation!, zoom: 13),
+          CameraPosition(target: target, zoom: 13),
         ),
       );
     } catch (_) {
@@ -363,12 +460,22 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
 
   Future<void> _ensureCurrentLocation({bool userInitiated = false}) async {
     if (_currentLocation != null) return;
+    final ok = await LocationGate.ensureReady(
+      context: context,
+      userInitiated: userInitiated,
+    );
+    if (!ok) return;
     final last = await Geolocator.getLastKnownPosition();
     if (last != null) {
-      _currentLocation = LatLng(last.latitude, last.longitude);
+      if (!mounted) return;
+      setState(() {
+        _currentLocation = LatLng(last.latitude, last.longitude);
+      });
+      final target = _currentLocation;
+      if (target == null) return;
       _mapController?.moveCamera(
         CameraUpdate.newCameraPosition(
-          CameraPosition(target: _currentLocation!, zoom: 12),
+          CameraPosition(target: target, zoom: 12),
         ),
       );
       return;

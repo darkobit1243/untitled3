@@ -1,11 +1,11 @@
-// ignore_for_file: deprecated_member_use
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
 import '../services/app_settings.dart';
-import '../theme/trustship_theme.dart';
-import 'login_screen.dart';
+import '../theme/bitasi_theme.dart';
+import 'auth/login_screen.dart';
 import 'notifications_settings_screen.dart';
 import 'payment_setup_screen.dart';
 import 'security_screen.dart';
@@ -113,44 +113,41 @@ class _ProfileScreenState extends State<ProfileScreen> {
       appBar: AppBar(title: const Text('Profil & Cüzdan')),
       body: RefreshIndicator(
         onRefresh: _load,
-        child: SingleChildScrollView(
+        child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Kullanıcı Bilgileri',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          children: [
+            const Text(
+              'Kullanıcı Bilgileri',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16),
+            _loading
+                ? const Center(child: CircularProgressIndicator())
+                : _buildProfileCard(email, userId),
+            const SizedBox(height: 24),
+            const Text(
+              'Özet',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16),
+            _buildStatsRow(),
+            const SizedBox(height: 32),
+            Center(
+              child: ElevatedButton.icon(
+                onPressed: () async {
+                  await apiClient.clearToken();
+                  if (!context.mounted) return;
+                  Navigator.of(context).pushAndRemoveUntil(
+                    MaterialPageRoute(builder: (_) => const LoginScreen()),
+                    (route) => false,
+                  );
+                },
+                icon: const Icon(Icons.logout),
+                label: const Text('Çıkış Yap'),
               ),
-              const SizedBox(height: 16),
-              _loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _buildProfileCard(email, userId),
-              const SizedBox(height: 24),
-              const Text(
-                'Özet',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 16),
-              _buildStatsRow(),
-              const SizedBox(height: 32),
-              Center(
-                child: ElevatedButton.icon(
-                  onPressed: () async {
-                    await apiClient.clearToken();
-                    if (!context.mounted) return;
-                    Navigator.of(context).pushAndRemoveUntil(
-                      MaterialPageRoute(builder: (_) => const LoginScreen()),
-                      (route) => false,
-                    );
-                  },
-                  icon: const Icon(Icons.logout),
-                  label: const Text('Çıkış Yap'),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -169,49 +166,61 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final rating = (_profile?['rating'] as num?)?.toDouble();
     final delivered = (_profile?['deliveredCount'] as num?)?.toInt();
 
+    ImageProvider? avatarProvider;
+    if (avatarUrl != null && avatarUrl.isNotEmpty) {
+      if (avatarUrl.startsWith('data:image')) {
+        final comma = avatarUrl.indexOf(',');
+        if (comma > -1 && comma + 1 < avatarUrl.length) {
+          try {
+            avatarProvider = MemoryImage(base64Decode(avatarUrl.substring(comma + 1)));
+          } catch (_) {
+            avatarProvider = null;
+          }
+        }
+      } else {
+        avatarProvider = NetworkImage(avatarUrl);
+      }
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
+          decoration: BoxDecoration(
+            color: Colors.white,
             borderRadius: BorderRadius.circular(22),
-        boxShadow: [
-              // ignore: duplicate_ignore
-              // ignore: deprecated_member_use
-              BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 14),
-        ],
-      ),
-          padding: const EdgeInsets.all(18),
-      child: Row(
-        children: [
-              CircleAvatar(
-                radius: 30,
-                backgroundColor: TrustShipColors.backgroundGrey,
-                backgroundImage: (avatarUrl != null && avatarUrl.isNotEmpty) ? NetworkImage(avatarUrl) : null,
-                child: (avatarUrl == null || avatarUrl.isEmpty)
-                    ? const Icon(Icons.person, color: TrustShipColors.primaryRed, size: 32)
-                    : null,
+            boxShadow: [
+              BoxShadow(color: Colors.black.withAlpha(10), blurRadius: 14),
+            ],
           ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                    Text(fullName, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+          padding: const EdgeInsets.all(18),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 44,
+                backgroundColor: BiTasiColors.backgroundGrey,
+                backgroundImage: avatarProvider,
+                child: avatarProvider == null
+                    ? const Icon(Icons.person, color: BiTasiColors.primaryRed, size: 32)
+                    : null,
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(fullName, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
                     const SizedBox(height: 4),
                     Text('ID: $userId', style: const TextStyle(color: Colors.grey)),
                     const SizedBox(height: 6),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
-                        // ignore: duplicate_ignore
-                        // ignore: deprecated_member_use
-                        color: TrustShipColors.primaryRed.withOpacity(0.1),
+                        color: BiTasiColors.primaryRed.withAlpha(26),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: Text(roleLabel, style: const TextStyle(color: TrustShipColors.primaryRed)),
-                ),
+                      child: Text(roleLabel, style: const TextStyle(color: BiTasiColors.primaryRed)),
+                    ),
                     if (rating != null || delivered != null) ...[
                       const SizedBox(height: 6),
                       Row(
@@ -228,11 +237,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ],
                       ),
                     ],
-              ],
-            ),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
         ),
         const SizedBox(height: 18),
         _buildSectionCard(
@@ -262,7 +271,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             actions: [
               ElevatedButton(
                 onPressed: () {},
-                style: ElevatedButton.styleFrom(backgroundColor: TrustShipColors.primaryRed),
+                style: ElevatedButton.styleFrom(backgroundColor: BiTasiColors.primaryRed),
                 child: const Text('Araç Ekle'),
               ),
             ],
@@ -332,29 +341,43 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required Widget child,
     List<Widget>? actions,
   }) {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 12),
-        ],
-      ),
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-              if (actions != null) Row(children: actions),
-            ],
-          ),
-          const SizedBox(height: 12),
-          child,
-        ],
+    final borderRadius = BorderRadius.circular(18);
+
+    return Material(
+      color: Colors.white,
+      borderRadius: borderRadius,
+      clipBehavior: Clip.antiAlias,
+      elevation: 1,
+      shadowColor: Colors.black.withAlpha(20),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+                ),
+                if (actions != null)
+                  Flexible(
+                    fit: FlexFit.loose,
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        alignment: WrapAlignment.end,
+                        children: actions,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            child,
+          ],
+        ),
       ),
     );
   }
@@ -377,7 +400,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             title: 'Oluşturduğun ilanlar',
             value: _myListingsCount.toString(),
             icon: Icons.local_post_office_outlined,
-            color: TrustShipColors.primaryRed,
+            color: BiTasiColors.primaryRed,
           ),
         ),
         const SizedBox(width: 12),
@@ -386,7 +409,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             title: 'Taşıdığın kargolar',
             value: _carrierDeliveriesCount.toString(),
             icon: Icons.route_outlined,
-            color: TrustShipColors.successGreen,
+            color: BiTasiColors.successGreen,
           ),
         ),
       ],
@@ -406,7 +429,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withAlpha(10),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -418,7 +441,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             width: 32,
             height: 32,
             decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
+              color: color.withAlpha(26),
               borderRadius: BorderRadius.circular(999),
             ),
             child: Icon(icon, size: 18, color: color),
@@ -433,7 +456,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
-                    color: TrustShipColors.textDarkGrey,
+                    color: BiTasiColors.textDarkGrey,
                   ),
                 ),
                 const SizedBox(height: 2),

@@ -1,10 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../services/api_client.dart';
-import '../theme/trustship_theme.dart';
+import '../theme/bitasi_theme.dart';
 
 class LiveTrackingScreen extends StatefulWidget {
   const LiveTrackingScreen({super.key, required this.deliveryId});
@@ -20,14 +21,18 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
   bool _loading = true;
   GoogleMapController? _controller;
   Timer? _poll;
+  BitmapDescriptor? _carrierIcon;
+
+  static const String _kCarrierMarkerAssetPath = 'assets/markers/kamyon_marker.png';
 
   @override
   void initState() {
     super.initState();
+    _loadCarrierMarkerIcon();
     _load();
     apiClient.followDeliveryUpdates(widget.deliveryId, _handleDeliveryUpdate);
     // Fallback polling (in case socket is unavailable)
-    _poll = Timer.periodic(const Duration(seconds: 8), (_) => _load(silent: true));
+    _poll = Timer.periodic(const Duration(seconds: 15), (_) => _load(silent: true));
   }
 
   @override
@@ -74,6 +79,21 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
     );
   }
 
+  Future<void> _loadCarrierMarkerIcon() async {
+    try {
+      // Ensure the asset exists; BitmapDescriptor.asset may fail silently on some platforms.
+      await rootBundle.load(_kCarrierMarkerAssetPath);
+      final icon = await BitmapDescriptor.asset(
+        const ImageConfiguration(size: Size(56, 56)),
+        _kCarrierMarkerAssetPath,
+      );
+      if (!mounted) return;
+      setState(() => _carrierIcon = icon);
+    } catch (_) {
+      // Keep default marker.
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final trackingEnabled = (_delivery?['trackingEnabled'] == true);
@@ -86,6 +106,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
         Marker(
           markerId: const MarkerId('carrier'),
           position: LatLng(lat, lng),
+          icon: _carrierIcon ?? BitmapDescriptor.defaultMarker,
           infoWindow: const InfoWindow(title: 'Taşıyıcı konumu'),
         ),
     };
@@ -101,7 +122,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(12),
-                      color: TrustShipColors.backgroundGrey,
+                      color: BiTasiColors.backgroundGrey,
                       child: Text(
                         hasLocation
                             ? 'Taşıyıcı konumu güncellendi.'
@@ -118,6 +139,8 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
                         markers: markers,
                         onMapCreated: (c) => _controller = c,
                         zoomControlsEnabled: false,
+                        myLocationEnabled: false,
+                        myLocationButtonEnabled: false,
                       ),
                     ),
                   ],

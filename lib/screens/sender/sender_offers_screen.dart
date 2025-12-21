@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../services/api_client.dart';
-import '../theme/trustship_theme.dart';
-import 'teklif_listesi_sheet.dart';
+import '../../services/api_client.dart';
+import '../../theme/bitasi_theme.dart';
+import '../teklif_listesi_sheet.dart';
 
 class SenderOffersScreen extends StatefulWidget {
   const SenderOffersScreen({super.key});
@@ -76,7 +76,7 @@ class _SenderOffersScreenState extends State<SenderOffersScreen> {
                         children: [
                           Row(
                             children: [
-                              const Icon(Icons.local_shipping, color: TrustShipColors.primaryRed),
+                              const Icon(Icons.local_shipping, color: BiTasiColors.primaryRed),
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
@@ -103,7 +103,7 @@ class _SenderOffersScreenState extends State<SenderOffersScreen> {
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                 decoration: BoxDecoration(
-                                  color: TrustShipColors.backgroundGrey,
+                                  color: BiTasiColors.backgroundGrey,
                                   borderRadius: BorderRadius.circular(999),
                                 ),
                                 child: Text('$weight kg', style: const TextStyle(fontSize: 11)),
@@ -116,7 +116,7 @@ class _SenderOffersScreenState extends State<SenderOffersScreen> {
                             child: ElevatedButton(
                               onPressed: listingId.isEmpty ? null : () => _openOffers(listingId, title),
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: TrustShipColors.primaryRed,
+                                backgroundColor: BiTasiColors.primaryRed,
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                               ),
                               child: const Text('Teklifleri Gör'),
@@ -132,5 +132,3 @@ class _SenderOffersScreenState extends State<SenderOffersScreen> {
     );
   }
 }
-
-

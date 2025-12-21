@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import '../services/api_client.dart';
-import 'carrier_home_screen.dart';
-import 'sender_home_screen.dart';
+import 'carrier/carrier_home_screen.dart';
+import 'sender/sender_home_screen.dart';
 import 'my_shipments_screen.dart';
 import 'profile_screen.dart';
-import 'carrier_deliveries_screen.dart';
-import 'messages_screen.dart';
+import 'carrier/carrier_deliveries_screen.dart';
+import 'chat/messages_screen.dart';
 
 class MainWrapper extends StatefulWidget {
   const MainWrapper({super.key, this.initialIndex, this.initialOpenOffersListingId});
@@ -32,6 +32,8 @@ class _MainWrapperState extends State<MainWrapper> {
   }
 
   Future<void> _loadRole() async {
+    // Preferred role local'de stale kalabiliyor; varsa token ile backend'den role'u sync et.
+    await apiClient.tryRestoreSession();
     final role = await apiClient.getPreferredRole();
     if (!mounted) return;
     setState(() {

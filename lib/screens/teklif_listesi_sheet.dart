@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
-import '../theme/trustship_theme.dart';
+import '../theme/bitasi_theme.dart';
 
 class TeklifListesiSheet extends StatefulWidget {
   const TeklifListesiSheet({
@@ -164,15 +164,15 @@ class _TeklifListesiSheetState extends State<TeklifListesiSheet> {
                       String statusText;
                       switch (status) {
                         case 'accepted':
-                          statusColor = TrustShipColors.successGreen;
+                          statusColor = BiTasiColors.successGreen;
                           statusText = 'Kabul edildi';
                           break;
                         case 'rejected':
-                          statusColor = TrustShipColors.errorRed;
+                          statusColor = BiTasiColors.errorRed;
                           statusText = 'Reddedildi';
                           break;
                         default:
-                          statusColor = TrustShipColors.warningOrange;
+                          statusColor = BiTasiColors.warningOrange;
                           statusText = 'Bekliyor';
                       }
 
@@ -186,8 +186,7 @@ class _TeklifListesiSheetState extends State<TeklifListesiSheet> {
                           borderRadius: BorderRadius.circular(16),
                           boxShadow: [
                             BoxShadow(
-                              // ignore: deprecated_member_use
-                              color: Colors.black.withOpacity(0.04),
+                              color: Colors.black.withAlpha(10),
                               blurRadius: 10,
                               offset: const Offset(0, 6),
                             ),
@@ -201,11 +200,10 @@ class _TeklifListesiSheetState extends State<TeklifListesiSheet> {
                               Row(
                                 children: [
                                   CircleAvatar(
-                                    // ignore: deprecated_member_use
-                                    backgroundColor: TrustShipColors.primaryBlue.withOpacity(0.12),
+                                    backgroundColor: BiTasiColors.primaryBlue.withAlpha(31),
                                     backgroundImage: avatar != null ? NetworkImage(avatar) : null,
                                     child: avatar == null
-                                        ? const Icon(Icons.local_shipping, color: TrustShipColors.primaryBlue)
+                                        ? const Icon(Icons.local_shipping, color: BiTasiColors.primaryBlue)
                                         : null,
                                   ),
                                   const SizedBox(width: 10),
@@ -226,8 +224,7 @@ class _TeklifListesiSheetState extends State<TeklifListesiSheet> {
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                     decoration: BoxDecoration(
-                                      // ignore: deprecated_member_use
-                                      color: statusColor.withOpacity(0.12),
+                                      color: statusColor.withAlpha(31),
                                       borderRadius: BorderRadius.circular(999),
                                     ),
                                     child: Text(
@@ -292,8 +289,8 @@ class _TeklifListesiSheetState extends State<TeklifListesiSheet> {
                                       child: OutlinedButton(
                                         onPressed: _actionLoading ? null : () => _handleReject(offerId),
                                         style: OutlinedButton.styleFrom(
-                                          foregroundColor: TrustShipColors.errorRed,
-                                          side: const BorderSide(color: TrustShipColors.errorRed),
+                                          foregroundColor: BiTasiColors.errorRed,
+                                          side: const BorderSide(color: BiTasiColors.errorRed),
                                         ),
                                         child: const Text('Reddet'),
                                       ),
@@ -303,7 +300,7 @@ class _TeklifListesiSheetState extends State<TeklifListesiSheet> {
                                       child: ElevatedButton(
                                         onPressed: _actionLoading ? null : () => _handleAccept(offerId),
                                         style: ElevatedButton.styleFrom(
-                                          backgroundColor: TrustShipColors.successGreen,
+                                          backgroundColor: BiTasiColors.successGreen,
                                           foregroundColor: Colors.white,
                                         ),
                                         child: const Text('Kabul Et'),

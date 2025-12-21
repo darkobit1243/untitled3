@@ -23,6 +23,15 @@ class ApiClient {
   IO.Socket? _socket;
   final List<void Function(bool)> _socketStatusListeners = [];
 
+  static const String _listingsCacheKey = 'listings_cache_v1';
+  static const String _listingsCacheAtKey = 'listings_cache_at_v1';
+  static const Duration _listingsMemoryTtl = Duration(seconds: 20);
+  static const Duration _listingsDiskTtl = Duration(minutes: 5);
+
+  List<dynamic>? _listingsCache;
+  DateTime? _listingsCacheAt;
+  Future<List<dynamic>>? _listingsInFlight;
+
   /// Public auth helpers for other services
   Map<String, String> authHeaders() => _headers();
   String get baseUrl => _baseUrl;
@@ -40,7 +49,19 @@ class ApiClient {
   }
 
   void setToken(String token) {
-    _jwt = token;
+    // Token değişince kullanıcı cache'leri resetlenmeli; aksi halde eski _userId
+    // ile /listings/owner, /offers/owner, /deliveries/by-owner gibi endpointler 403 dönebilir.
+    if (_jwt != token) {
+      _jwt = token;
+      _userId = null;
+
+      // Socket header'ı da token'a bağlı; yeniden bağlanmak için kapat.
+      try {
+        _socket?.disconnect();
+        _socket?.dispose();
+      } catch (_) {}
+      _socket = null;
+    }
     _persistToken(token);
   }
 
@@ -72,6 +93,11 @@ class ApiClient {
   Future<void> clearToken() async {
     _jwt = null;
     _userId = null;
+    try {
+      _socket?.disconnect();
+      _socket?.dispose();
+    } catch (_) {}
+    _socket = null;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('auth_token');
     await prefs.remove('preferred_role');
@@ -231,7 +257,7 @@ class ApiClient {
     if (idValue == null) {
       throw Exception('Kullanıcı bilgisi eksik');
     }
-    final id = idValue as String;
+    final id = idValue.toString();
     _userId = id;
     final role = data['role'] as String?;
     if (role != null) {
@@ -274,15 +300,76 @@ class ApiClient {
   }
 
   // LISTINGS
-  Future<List<dynamic>> fetchListings() async {
+  Future<List<dynamic>> fetchListings({bool forceRefresh = false}) async {
+    final now = DateTime.now();
+
+    if (!forceRefresh) {
+      final cached = _listingsCache;
+      final cachedAt = _listingsCacheAt;
+      if (cached != null && cachedAt != null && now.difference(cachedAt) <= _listingsMemoryTtl) {
+        return cached;
+      }
+
+      // Warm-start: try disk cache once when memory cache is empty.
+      if (cached == null) {
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          final raw = prefs.getString(_listingsCacheKey);
+          final atMillis = prefs.getInt(_listingsCacheAtKey);
+          if (raw != null && atMillis != null) {
+            final at = DateTime.fromMillisecondsSinceEpoch(atMillis);
+            if (now.difference(at) <= _listingsDiskTtl) {
+              final decoded = jsonDecode(raw);
+              if (decoded is List<dynamic>) {
+                _listingsCache = decoded;
+                _listingsCacheAt = at;
+                // Refresh in background; callers get instant stale cache.
+                // ignore: unawaited_futures
+                fetchListings(forceRefresh: true);
+                return decoded;
+              }
+            }
+          }
+        } catch (_) {
+          // Ignore cache errors.
+        }
+      }
+
+      final inFlight = _listingsInFlight;
+      if (inFlight != null) return inFlight;
+    }
+
+    final future = _fetchListingsFromNetwork();
+    _listingsInFlight = future;
+    try {
+      return await future;
+    } finally {
+      if (identical(_listingsInFlight, future)) {
+        _listingsInFlight = null;
+      }
+    }
+  }
+
+  Future<List<dynamic>> _fetchListingsFromNetwork() async {
     final resp = await _client.get(
       Uri.parse('$_baseUrl/listings'),
-      headers: _headers(),
+      headers: const <String, String>{
+        'Content-Type': 'application/json',
+      },
     );
     if (resp.statusCode >= 400) {
       throw Exception('İlanlar alınamadı: ${resp.body}');
     }
     final list = jsonDecode(resp.body) as List<dynamic>;
+    _listingsCache = list;
+    _listingsCacheAt = DateTime.now();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_listingsCacheKey, jsonEncode(list));
+      await prefs.setInt(_listingsCacheAtKey, _listingsCacheAt!.millisecondsSinceEpoch);
+    } catch (_) {
+      // Ignore disk cache failures.
+    }
     if (kDebugMode) {
       // ignore: avoid_print
       print('ApiClient.fetchListings: status=${resp.statusCode} count=${list.length}');

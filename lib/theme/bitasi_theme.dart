@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
-/// TrustShip ana renk paleti ve ortak stiller.
-class TrustShipColors {
+/// BiTasi ana renk paleti ve ortak stiller.
+class BiTasiColors {
   static const primaryRed = Color(0xFFE63946);
+  // BiTaşı login brand color (requested): #B91924
+  static const bitasiRed = Color(0xFFB91924);
   static const primaryBlue = Color(0xFF4A6DFF);
   static const secondaryWhite = Color(0xFFFFFFFF);
   static const textDarkGrey = Color(0xFF2B2D42);
@@ -13,28 +15,27 @@ class TrustShipColors {
   static const borderGrey = Color(0xFFE5E7EB);
 }
 
-ThemeData buildTrustShipTheme() {
+ThemeData buildBiTasiTheme() {
   return ThemeData(
     useMaterial3: true,
-    primaryColor: TrustShipColors.primaryRed,
-    scaffoldBackgroundColor: TrustShipColors.backgroundGrey,
+    primaryColor: BiTasiColors.primaryRed,
+    scaffoldBackgroundColor: BiTasiColors.backgroundGrey,
     colorScheme: ColorScheme.fromSeed(
-      seedColor: TrustShipColors.primaryRed,
-      primary: TrustShipColors.primaryRed,
-      secondary: TrustShipColors.successGreen,
-      // ignore: deprecated_member_use
-      background: TrustShipColors.backgroundGrey,
-      error: TrustShipColors.errorRed,
+      seedColor: BiTasiColors.primaryRed,
+      primary: BiTasiColors.primaryRed,
+      secondary: BiTasiColors.successGreen,
+      surface: BiTasiColors.backgroundGrey,
+      error: BiTasiColors.errorRed,
     ),
     appBarTheme: const AppBarTheme(
-      backgroundColor: TrustShipColors.secondaryWhite,
-      foregroundColor: TrustShipColors.textDarkGrey,
+      backgroundColor: BiTasiColors.secondaryWhite,
+      foregroundColor: BiTasiColors.textDarkGrey,
       elevation: 0,
       centerTitle: true,
     ),
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
-        backgroundColor: TrustShipColors.primaryRed,
+        backgroundColor: BiTasiColors.primaryRed,
         foregroundColor: Colors.white,
         minimumSize: const Size(double.infinity, 56),
         shape: RoundedRectangleBorder(
@@ -48,11 +49,11 @@ ThemeData buildTrustShipTheme() {
       fillColor: Colors.white,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(8),
-        borderSide: const BorderSide(color: TrustShipColors.borderGrey),
+        borderSide: const BorderSide(color: BiTasiColors.borderGrey),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(8),
-        borderSide: const BorderSide(color: TrustShipColors.primaryRed, width: 2),
+        borderSide: const BorderSide(color: BiTasiColors.primaryRed, width: 2),
       ),
     ),
     cardTheme: CardThemeData(
@@ -61,11 +62,8 @@ ThemeData buildTrustShipTheme() {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
       ),
-      // ignore: deprecated_member_use
-      shadowColor: Colors.black.withOpacity(0.05),
+      shadowColor: Colors.black.withAlpha(13),
       margin: const EdgeInsets.all(0),
     ),
   );
 }
-
-

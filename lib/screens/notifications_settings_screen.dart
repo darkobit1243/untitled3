@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/app_settings.dart';
 import '../services/push_notifications.dart';
 import '../services/push_config.dart';
-import '../theme/trustship_theme.dart';
+import '../theme/bitasi_theme.dart';
 
 class NotificationsSettingsScreen extends StatefulWidget {
   const NotificationsSettingsScreen({super.key});
@@ -68,7 +68,7 @@ class _NotificationsSettingsScreenState extends State<NotificationsSettingsScree
                     ),
                     trailing: Switch(
                       value: _enabled,
-                      activeThumbColor: TrustShipColors.primaryRed,
+                      activeThumbColor: BiTasiColors.primaryRed,
                       onChanged: _toggle,
                     ),
                   ),

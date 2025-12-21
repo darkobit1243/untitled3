@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../theme/trustship_theme.dart';
+import '../theme/bitasi_theme.dart';
 
 class PaymentSetupScreen extends StatefulWidget {
   const PaymentSetupScreen({super.key});
@@ -69,7 +69,7 @@ class _PaymentSetupScreenState extends State<PaymentSetupScreen> {
             children: [
               ElevatedButton(
                 onPressed: details.onStepContinue,
-                style: ElevatedButton.styleFrom(backgroundColor: TrustShipColors.primaryRed),
+                style: ElevatedButton.styleFrom(backgroundColor: BiTasiColors.primaryRed),
                 child: Text(_step == 2 ? 'Kaydet' : 'Devam'),
               ),
               const SizedBox(width: 12),

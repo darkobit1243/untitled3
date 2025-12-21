@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../theme/trustship_theme.dart';
+import '../theme/bitasi_theme.dart';
 
 class SecurityScreen extends StatefulWidget {
   const SecurityScreen({super.key});
@@ -35,7 +35,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
               children: [
                 SwitchListTile(
                   value: _twoFactorEnabled,
-                  activeThumbColor: TrustShipColors.primaryRed,
+                  activeThumbColor: BiTasiColors.primaryRed,
                   title: const Text('2 Adımlı Doğrulama (2FA)'),
                   subtitle: const Text(
                     'Hesabını ek bir doğrulama adımıyla koru.',
@@ -110,7 +110,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('İptal')),
             ElevatedButton(
               onPressed: () => Navigator.pop(ctx, true),
-              style: ElevatedButton.styleFrom(backgroundColor: TrustShipColors.primaryRed),
+              style: ElevatedButton.styleFrom(backgroundColor: BiTasiColors.primaryRed),
               child: Text(actionText),
             ),
           ],

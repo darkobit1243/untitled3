@@ -1,12 +1,14 @@
-import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
 import 'dart:async';
 
-import '../services/api_client.dart';
-import '../services/location_gate.dart';
-import 'live_tracking_screen.dart';
-import 'qr_scan_screen.dart';
-import '../theme/trustship_theme.dart';
+import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
+
+import '../../models/delivery_status.dart';
+import '../../services/api_client.dart';
+import '../../services/location_gate.dart';
+import '../../theme/bitasi_theme.dart';
+import '../live_tracking_screen.dart';
+import '../qr_scan_screen.dart';
 
 class CarrierDeliveriesScreen extends StatefulWidget {
   const CarrierDeliveriesScreen({super.key});
@@ -134,7 +136,7 @@ class _CarrierDeliveriesScreenState extends State<CarrierDeliveriesScreen> {
                       },
                 icon: Icon(
                   selected ? Icons.star : Icons.star_border,
-                  color: TrustShipColors.warningOrange,
+                  color: BiTasiColors.warningOrange,
                 ),
               );
             }
@@ -180,7 +182,7 @@ class _CarrierDeliveriesScreenState extends State<CarrierDeliveriesScreen> {
                 ),
                 ElevatedButton(
                   onPressed: submitting ? null : submit,
-                  style: ElevatedButton.styleFrom(backgroundColor: TrustShipColors.primaryRed),
+                  style: ElevatedButton.styleFrom(backgroundColor: BiTasiColors.primaryRed),
                   child: submitting
                       ? const SizedBox(
                           width: 18,
@@ -217,21 +219,21 @@ class _CarrierDeliveriesScreenState extends State<CarrierDeliveriesScreen> {
                       final item = _items[index] as Map<String, dynamic>;
                       final id = item['id']?.toString() ?? '';
                       final listingId = item['listingId']?.toString() ?? '';
-                      final status = item['status']?.toString() ?? '';
+                      final status = item['status']?.toString().toLowerCase() ?? '';
                       final pickupAt = item['pickupAt']?.toString() ?? '';
                       final deliveredAt = item['deliveredAt']?.toString() ?? '';
 
                       String statusLabel;
                       Color statusColor;
-                      if (status == 'pickup_pending') {
+                      if (status == DeliveryStatus.pickupPending) {
                         statusLabel = 'Alım bekleniyor';
-                        statusColor = TrustShipColors.warningOrange;
-                      } else if (status == 'in_transit') {
+                        statusColor = BiTasiColors.warningOrange;
+                      } else if (status == DeliveryStatus.inTransit) {
                         statusLabel = 'Yolda';
-                        statusColor = TrustShipColors.primaryRed;
-                      } else if (status == 'delivered') {
+                        statusColor = BiTasiColors.primaryRed;
+                      } else if (status == DeliveryStatus.delivered) {
                         statusLabel = 'Teslim edildi';
-                        statusColor = TrustShipColors.successGreen;
+                        statusColor = BiTasiColors.successGreen;
                       } else {
                         statusLabel = 'Bilinmiyor';
                         statusColor = Colors.grey;
@@ -247,10 +249,10 @@ class _CarrierDeliveriesScreenState extends State<CarrierDeliveriesScreen> {
                             width: 40,
                             height: 40,
                             decoration: BoxDecoration(
-                              color: TrustShipColors.backgroundGrey,
+                              color: BiTasiColors.backgroundGrey,
                               borderRadius: BorderRadius.circular(8),
                             ),
-                            child: const Icon(Icons.local_shipping, color: TrustShipColors.primaryRed),
+                            child: const Icon(Icons.local_shipping, color: BiTasiColors.primaryRed),
                           ),
                           title: Text(
                             'Listing: $listingId',
@@ -270,72 +272,73 @@ class _CarrierDeliveriesScreenState extends State<CarrierDeliveriesScreen> {
                                   'Teslim: $deliveredAt',
                                   style: const TextStyle(fontSize: 11, color: Colors.grey),
                                 ),
+
+                              if (status == DeliveryStatus.pickupPending ||
+                                  status == DeliveryStatus.inTransit ||
+                                  status == DeliveryStatus.delivered) ...[
+                                const SizedBox(height: 6),
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: Wrap(
+                                    spacing: 6,
+                                    runSpacing: -8,
+                                    alignment: WrapAlignment.end,
+                                    children: [
+                                      if (status == DeliveryStatus.pickupPending)
+                                        TextButton(
+                                          onPressed: () => _updateStatus(id, true),
+                                          child: const Text('Teslimatı Al', style: TextStyle(fontSize: 11)),
+                                        ),
+                                      if (status == DeliveryStatus.inTransit) ...[
+                                        TextButton(
+                                          onPressed: () => _sendLocation(id),
+                                          child: const Text('Konumu Gönder', style: TextStyle(fontSize: 11)),
+                                        ),
+                                        TextButton(
+                                          onPressed: () {
+                                            Navigator.of(context).push(
+                                              MaterialPageRoute<void>(
+                                                builder: (_) => LiveTrackingScreen(deliveryId: id),
+                                              ),
+                                            );
+                                          },
+                                          child: const Text('Canlı Takip', style: TextStyle(fontSize: 11)),
+                                        ),
+                                        TextButton(
+                                          onPressed: () => _updateStatus(id, false),
+                                          child: const Text('Teslim Et', style: TextStyle(fontSize: 11)),
+                                        ),
+                                      ],
+                                      if (status == DeliveryStatus.delivered)
+                                        TextButton(
+                                          onPressed: _ratedDeliveryIds.contains(id)
+                                              ? null
+                                              : () => _showRatingDialog(deliveryId: id, listingId: listingId),
+                                          child: Text(
+                                            _ratedDeliveryIds.contains(id) ? 'Puanlandı' : 'Puan Ver',
+                                            style: const TextStyle(fontSize: 11),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ],
                           ),
-                          trailing: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  // ignore: deprecated_member_use
-                                  color: statusColor.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(999),
-                                ),
-                                child: Text(
-                                  statusLabel,
-                                  style: TextStyle(
-                                    color: statusColor,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
+                          trailing: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: statusColor.withAlpha(26),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              statusLabel,
+                              style: TextStyle(
+                                color: statusColor,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
                               ),
-                              const SizedBox(height: 6),
-                              if (status == 'pickup_pending')
-                                TextButton(
-                                  onPressed: () => _updateStatus(id, true),
-                                  child: const Text(
-                                    'Teslimatı Al',
-                                    style: TextStyle(fontSize: 11),
-                                  ),
-                                )
-                              else if (status == 'in_transit')
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  children: [
-                                    TextButton(
-                                      onPressed: () => _sendLocation(id),
-                                      child: const Text('Konumu Gönder', style: TextStyle(fontSize: 11)),
-                                    ),
-                                    TextButton(
-                                      onPressed: () {
-                                        Navigator.of(context).push(
-                                          MaterialPageRoute<void>(
-                                            builder: (_) => LiveTrackingScreen(deliveryId: id),
-                                          ),
-                                        );
-                                      },
-                                      child: const Text('Canlı Takip', style: TextStyle(fontSize: 11)),
-                                    ),
-                                    TextButton(
-                                      onPressed: () => _updateStatus(id, false),
-                                      child: const Text('Teslim Et', style: TextStyle(fontSize: 11)),
-                                    ),
-                                  ],
-                                ),
-                              if (status == 'delivered')
-                                TextButton(
-                                  onPressed: _ratedDeliveryIds.contains(id)
-                                      ? null
-                                      : () => _showRatingDialog(deliveryId: id, listingId: listingId),
-                                  child: Text(
-                                    _ratedDeliveryIds.contains(id) ? 'Puanlandı' : 'Puan Ver',
-                                    style: const TextStyle(fontSize: 11),
-                                  ),
-                                ),
-                            ],
+                            ),
                           ),
                         ),
                       );
@@ -393,7 +396,7 @@ class _CarrierDeliveriesScreenState extends State<CarrierDeliveriesScreen> {
     // Start tracking timers for in_transit deliveries; stop for others.
     final inTransitIds = _items
         .whereType<Map<String, dynamic>>()
-        .where((d) => (d['status']?.toString() ?? '') == 'in_transit')
+        .where((d) => (d['status']?.toString().toLowerCase() ?? '') == DeliveryStatus.inTransit)
         .map((d) => d['id']?.toString() ?? '')
         .where((id) => id.isNotEmpty)
         .toSet();

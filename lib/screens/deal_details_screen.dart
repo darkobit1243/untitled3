@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../models/delivery_status.dart';
 import '../services/api_client.dart';
 import 'live_tracking_screen.dart';
-import '../theme/trustship_theme.dart';
+import 'offer_amount_screen.dart';
+import '../theme/bitasi_theme.dart';
 
 /// Anlaşma detay ekranı:
 /// - Paket özeti
@@ -108,8 +110,7 @@ class _DealDetailsScreenState extends State<DealDetailsScreen> {
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            // ignore: deprecated_member_use
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withAlpha(13),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -121,13 +122,13 @@ class _DealDetailsScreenState extends State<DealDetailsScreen> {
         children: [
           Row(
             children: const [
-              Icon(Icons.inventory_2, color: TrustShipColors.primaryRed, size: 20),
+              Icon(Icons.inventory_2, color: BiTasiColors.primaryRed, size: 20),
               SizedBox(width: 8),
               Text(
                 'Paket Özeti',
                 style: TextStyle(
                   fontWeight: FontWeight.w600,
-                  color: TrustShipColors.textDarkGrey,
+                  color: BiTasiColors.textDarkGrey,
                 ),
               ),
             ],
@@ -138,7 +139,7 @@ class _DealDetailsScreenState extends State<DealDetailsScreen> {
             style: const TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,
-              color: TrustShipColors.textDarkGrey,
+              color: BiTasiColors.textDarkGrey,
             ),
           ),
           if (description.isNotEmpty) ...[
@@ -162,21 +163,21 @@ class _DealDetailsScreenState extends State<DealDetailsScreen> {
     final trackingEnabled = _delivery?['trackingEnabled'] == true;
 
     if (_delivery != null) {
-      final status = _delivery!['status']?.toString();
+      final status = _delivery!['status']?.toString().toLowerCase();
       final pickupAt = _delivery!['pickupAt']?.toString() ?? '';
       final deliveredAt = _delivery!['deliveredAt']?.toString() ?? '';
 
-      if (status == 'pickup_pending') {
+      if (status == DeliveryStatus.pickupPending) {
         statusLabel = 'Teslimat bekliyor';
-        statusColor = TrustShipColors.warningOrange;
+        statusColor = BiTasiColors.warningOrange;
         extra = 'Kurye paketi henüz almadı.';
-      } else if (status == 'in_transit') {
+      } else if (status == DeliveryStatus.inTransit) {
         statusLabel = 'Yolda';
-        statusColor = TrustShipColors.primaryRed;
+        statusColor = BiTasiColors.primaryRed;
         extra = pickupAt.isNotEmpty ? 'Alım zamanı: $pickupAt' : 'Kurye yolda.';
-      } else if (status == 'delivered') {
+      } else if (status == DeliveryStatus.delivered) {
         statusLabel = 'Teslim edildi';
-        statusColor = TrustShipColors.successGreen;
+        statusColor = BiTasiColors.successGreen;
         extra = deliveredAt.isNotEmpty ? 'Teslim zamanı: $deliveredAt' : 'Teslimat tamamlandı.';
       }
     }
@@ -187,8 +188,7 @@ class _DealDetailsScreenState extends State<DealDetailsScreen> {
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            // ignore: deprecated_member_use
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withAlpha(13),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -200,7 +200,7 @@ class _DealDetailsScreenState extends State<DealDetailsScreen> {
         children: [
           Row(
             children: [
-              const Icon(Icons.route, color: TrustShipColors.successGreen),
+              const Icon(Icons.route, color: BiTasiColors.successGreen),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -210,7 +210,7 @@ class _DealDetailsScreenState extends State<DealDetailsScreen> {
                       'Teslimat Durumu',
                       style: TextStyle(
                         fontWeight: FontWeight.w600,
-                        color: TrustShipColors.textDarkGrey,
+                        color: BiTasiColors.textDarkGrey,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -225,8 +225,7 @@ class _DealDetailsScreenState extends State<DealDetailsScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
-                  // ignore: deprecated_member_use
-                  color: statusColor.withOpacity(0.1),
+                  color: statusColor.withAlpha(26),
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Text(
@@ -250,7 +249,7 @@ class _DealDetailsScreenState extends State<DealDetailsScreen> {
                   ),
                 );
               },
-              style: ElevatedButton.styleFrom(backgroundColor: TrustShipColors.primaryRed),
+              style: ElevatedButton.styleFrom(backgroundColor: BiTasiColors.primaryRed),
               child: const Text('Canlı Takip'),
             ),
           ],
@@ -268,8 +267,7 @@ class _DealDetailsScreenState extends State<DealDetailsScreen> {
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            // ignore: deprecated_member_use
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withAlpha(13),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -286,12 +284,12 @@ class _DealDetailsScreenState extends State<DealDetailsScreen> {
                 'Teklifler',
                 style: TextStyle(
                   fontWeight: FontWeight.w600,
-                  color: TrustShipColors.textDarkGrey,
+                  color: BiTasiColors.textDarkGrey,
                 ),
               ),
               if (listingId != null)
                 TextButton.icon(
-                  onPressed: () => _showOfferDialog(listingId),
+                  onPressed: () async => _showOfferDialog(listingId),
                   icon: const Icon(Icons.local_offer, size: 18),
                   label: const Text('Teklif ver'),
                 ),
@@ -323,15 +321,15 @@ class _DealDetailsScreenState extends State<DealDetailsScreen> {
                 String statusText;
                 switch (status) {
                   case 'accepted':
-                    statusColor = TrustShipColors.successGreen;
+                    statusColor = BiTasiColors.successGreen;
                     statusText = 'Kabul edildi';
                     break;
                   case 'rejected':
-                    statusColor = TrustShipColors.errorRed;
+                    statusColor = BiTasiColors.errorRed;
                     statusText = 'Reddedildi';
                     break;
                   default:
-                    statusColor = TrustShipColors.warningOrange;
+                    statusColor = BiTasiColors.warningOrange;
                     statusText = 'Bekliyor';
                 }
 
@@ -342,8 +340,8 @@ class _DealDetailsScreenState extends State<DealDetailsScreen> {
                   child: ListTile(
                     contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     leading: CircleAvatar(
-                      backgroundColor: TrustShipColors.backgroundGrey,
-                      child: const Icon(Icons.person, color: TrustShipColors.primaryRed),
+                      backgroundColor: BiTasiColors.backgroundGrey,
+                      child: const Icon(Icons.person, color: BiTasiColors.primaryRed),
                     ),
                     title: Text(
                       '$amount TL',
@@ -352,8 +350,7 @@ class _DealDetailsScreenState extends State<DealDetailsScreen> {
                     trailing: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        // ignore: deprecated_member_use
-                        color: statusColor.withOpacity(0.1),
+                        color: statusColor.withAlpha(26),
                         borderRadius: BorderRadius.circular(999),
                       ),
                       child: Text(
@@ -374,62 +371,41 @@ class _DealDetailsScreenState extends State<DealDetailsScreen> {
     );
   }
 
-  void _showOfferDialog(String listingId) {
-    final controller = TextEditingController();
+  Future<void> _showOfferDialog(String listingId) async {
+    final title = widget.listing['title']?.toString() ?? 'İlan';
 
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Teklif ver'),
-          content: TextField(
-            controller: controller,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-              labelText: 'Teklif (TL)',
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Vazgeç'),
-            ),
-            TextButton(
-              onPressed: () async {
-                final value = double.tryParse(controller.text);
-                if (value == null) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Geçerli bir tutar gir.')),
-                  );
-                  return;
-                }
-
-                try {
-                  await apiClient.createOffer(
-                    listingId: listingId,
-                    amount: value,
-                  );
-                  if (!mounted) return;
-                  // ignore: use_build_context_synchronously
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Teklif gönderildi.')),
-                  );
-                  // ignore: use_build_context_synchronously
-                  Navigator.pop(context);
-                  await _load();
-                } catch (e) {
-                  if (!mounted) return;
-                  // ignore: use_build_context_synchronously
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Teklif gönderilemedi: $e')),
-                  );
-                }
-              },
-              child: const Text('Gönder'),
-            ),
-          ],
-        );
-      },
+    final result = await Navigator.of(context).push<String>(
+      PageRouteBuilder<String>(
+        pageBuilder: (_, __, ___) => OfferAmountScreen(title: title),
+        transitionDuration: Duration.zero,
+        reverseTransitionDuration: Duration.zero,
+      ),
     );
+
+    if (!mounted) return;
+    if (result == null || result.trim().isEmpty) return;
+
+    final normalized = result.trim().replaceAll(',', '.');
+    final value = double.tryParse(normalized);
+    if (value == null || value <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Geçerli bir tutar girin.')),
+      );
+      return;
+    }
+
+    try {
+      await apiClient.createOffer(listingId: listingId, amount: value);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Teklif gönderildi.')),
+      );
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Teklif gönderilemedi: $e')),
+      );
+    }
   }
 }

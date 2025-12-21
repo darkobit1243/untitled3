@@ -2,13 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'dart:ui';
 
-import 'screens/login_screen.dart';
+import 'screens/auth/login_screen.dart';
 import 'screens/main_wrapper.dart';
 import 'services/api_client.dart';
 import 'services/app_navigator.dart';
 import 'services/push_notifications.dart';
 import 'services/push_config.dart';
-import 'theme/trustship_theme.dart';
+import 'theme/bitasi_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -43,7 +43,7 @@ class BiTasiApp extends StatelessWidget {
     return MaterialApp(
       title: 'BiTaşı',
       debugShowCheckedModeBanner: false,
-      theme: buildTrustShipTheme(),
+      theme: buildBiTasiTheme(),
       navigatorKey: appNavigatorKey,
       home: const _RootDecider(),
     );

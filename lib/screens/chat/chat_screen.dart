@@ -207,8 +207,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 color: Colors.white,
                 boxShadow: [
                   BoxShadow(
-                    // ignore: deprecated_member_use
-                    color: Colors.black.withOpacity(0.04),
+                    color: Colors.black.withAlpha(10),
                     blurRadius: 8,
                     offset: const Offset(0, -2),
                   )

@@ -22,4 +22,10 @@ API key repo içine gömülü değildir; çalıştırırken `--dart-define` ile 
 
 - `flutter run --dart-define=GOOGLE_MAPS_WEB_API_KEY=YOUR_KEY`
 
+VS Code ile daha rahat kullanım (önerilen):
+
+- Repo kökünde `dart_defines.example.json` dosyasını `dart_defines.json` olarak kopyala.
+- `dart_defines.json` içine `GOOGLE_MAPS_WEB_API_KEY` değerini yaz.
+- VS Code debug config `.vscode/launch.json` zaten `--dart-define-from-file=dart_defines.json` kullanır.
+
 Not: Key’i Google Cloud Console’da mümkün olduğunca kısıtlayın (API bazında ve uygulama/bundle bazında).

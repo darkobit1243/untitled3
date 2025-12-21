@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
-import '../theme/trustship_theme.dart';
+import '../theme/bitasi_theme.dart';
 import 'create_shipment_screen.dart';
 import 'deal_details_screen.dart';
 import 'my_shipments_screen.dart';
 import 'profile_screen.dart';
-import 'carrier_deliveries_screen.dart';
+import 'carrier/carrier_deliveries_screen.dart';
 
 enum DashboardMode { sender, carrier }
 
@@ -43,7 +43,7 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.local_shipping, color: TrustShipColors.primaryRed),
+            Icon(Icons.local_shipping, color: BiTasiColors.primaryRed),
             const SizedBox(width: 8),
             const Text(
               'BiTaşı',
@@ -109,7 +109,7 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                             'İlanlar yüklenemedi.',
                             style: TextStyle(
                               fontWeight: FontWeight.w600,
-                              color: TrustShipColors.textDarkGrey,
+                              color: BiTasiColors.textDarkGrey,
                             ),
                           ),
                           const SizedBox(height: 4),
@@ -137,7 +137,7 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                             'Henüz hiç ilan yok.',
                             style: TextStyle(
                               fontWeight: FontWeight.w600,
-                              color: TrustShipColors.textDarkGrey,
+                              color: BiTasiColors.textDarkGrey,
                             ),
                           ),
                           SizedBox(height: 4),
@@ -163,7 +163,7 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
       ),
       floatingActionButton: _mode == DashboardMode.sender
           ? FloatingActionButton(
-              backgroundColor: TrustShipColors.primaryRed,
+              backgroundColor: BiTasiColors.primaryRed,
               onPressed: () {
                 Navigator.of(context).push(
                   MaterialPageRoute<void>(
@@ -183,7 +183,7 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
       child: Container(
         padding: const EdgeInsets.all(4),
         decoration: BoxDecoration(
-          color: TrustShipColors.backgroundGrey,
+          color: BiTasiColors.backgroundGrey,
           borderRadius: BorderRadius.circular(24),
         ),
         child: Row(
@@ -239,8 +239,7 @@ class _ModeButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
-                // ignore: deprecated_member_use
-                color: Colors.black.withOpacity(0.05),
+                color: Colors.black.withAlpha(13),
                 blurRadius: 12,
                 offset: const Offset(0, 4),
               ),
@@ -251,7 +250,7 @@ class _ModeButton extends StatelessWidget {
               label,
               style: const TextStyle(
                 fontWeight: FontWeight.w600,
-                color: TrustShipColors.textDarkGrey,
+                color: BiTasiColors.textDarkGrey,
               ),
             ),
           ),
@@ -287,7 +286,7 @@ class _SenderView extends StatelessWidget {
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
-                color: TrustShipColors.textDarkGrey,
+                color: BiTasiColors.textDarkGrey,
               ),
             ),
           );
@@ -326,8 +325,7 @@ class _ShipmentCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
-              // ignore: deprecated_member_use
-              color: Colors.black.withOpacity(0.05),
+              color: Colors.black.withAlpha(13),
               blurRadius: 12,
               offset: const Offset(0, 4),
             ),
@@ -339,10 +337,10 @@ class _ShipmentCard extends StatelessWidget {
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: TrustShipColors.backgroundGrey,
+                color: BiTasiColors.backgroundGrey,
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Icon(Icons.local_shipping, color: TrustShipColors.primaryRed),
+              child: const Icon(Icons.local_shipping, color: BiTasiColors.primaryRed),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -353,7 +351,7 @@ class _ShipmentCard extends StatelessWidget {
                     title,
                     style: const TextStyle(
                       fontWeight: FontWeight.w600,
-                      color: TrustShipColors.textDarkGrey,
+                      color: BiTasiColors.textDarkGrey,
                     ),
                   ),
                   if (description.isNotEmpty) ...[
@@ -376,14 +374,13 @@ class _ShipmentCard extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
-                // ignore: deprecated_member_use
-                color: TrustShipColors.warningOrange.withOpacity(0.1),
+                color: BiTasiColors.warningOrange.withAlpha(26),
                 borderRadius: BorderRadius.circular(999),
               ),
               child: const Text(
                 'Taşıyıcı aranıyor',
                 style: TextStyle(
-                  color: TrustShipColors.warningOrange,
+                  color: BiTasiColors.warningOrange,
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
                 ),
@@ -418,7 +415,7 @@ class _CarrierView extends StatelessWidget {
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
-            color: TrustShipColors.textDarkGrey,
+            color: BiTasiColors.textDarkGrey,
           ),
         ),
         const SizedBox(height: 8),
@@ -456,8 +453,7 @@ class _JobCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
-              // ignore: deprecated_member_use
-              color: Colors.black.withOpacity(0.05),
+              color: Colors.black.withAlpha(13),
               blurRadius: 12,
               offset: const Offset(0, 4),
             ),
@@ -468,14 +464,14 @@ class _JobCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                const Icon(Icons.place, color: TrustShipColors.primaryRed, size: 18),
+                const Icon(Icons.place, color: BiTasiColors.primaryRed, size: 18),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
                     title,
                     style: const TextStyle(
                       fontWeight: FontWeight.w600,
-                      color: TrustShipColors.textDarkGrey,
+                      color: BiTasiColors.textDarkGrey,
                     ),
                   ),
                 ),
@@ -497,7 +493,7 @@ class _JobCard extends StatelessWidget {
                 Text(
                   'Teklif bekleniyor',
                   style: TextStyle(
-                    color: TrustShipColors.successGreen,
+                    color: BiTasiColors.successGreen,
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                   ),
@@ -507,7 +503,7 @@ class _JobCard extends StatelessWidget {
             const SizedBox(height: 8),
             Row(
               children: const [
-                Icon(Icons.lock, color: TrustShipColors.successGreen, size: 14),
+                Icon(Icons.lock, color: BiTasiColors.successGreen, size: 14),
                 SizedBox(width: 4),
                 Text(
                   'Emanet',

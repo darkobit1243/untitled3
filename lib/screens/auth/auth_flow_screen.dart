@@ -1,4 +1,4 @@
-// lib/screens/auth_flow_screen.dart
+// lib/screens/auth/auth_flow_screen.dart
 //
 // Çok adımlı kayıt akışı:
 // 1) Rol seçimi (gönderici / taşıyıcı)
@@ -12,10 +12,15 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../services/api_client.dart';
-import '../theme/trustship_theme.dart';
-import 'main_wrapper.dart';
+import '../../services/api_client.dart';
+import '../../theme/app_ui.dart';
+import '../../theme/bitasi_theme.dart';
+import '../../widgets/app_button.dart';
+import '../../widgets/app_section_card.dart';
+import '../../widgets/app_text_field.dart';
+import '../main_wrapper.dart';
 import 'otp_verification_screen.dart';
+import '../sender/sender_company_info_screen.dart';
 
 enum AuthView {
   roleSelection,
@@ -35,12 +40,31 @@ class _AuthFlowScreenState extends State<AuthFlowScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _passwordConfirmController = TextEditingController();
-  final _fullNameController = TextEditingController();
+  final _firstNameController = TextEditingController();
+  final _lastNameController = TextEditingController();
   final _phoneController = TextEditingController();
-  final _senderAddressController = TextEditingController();
   final _carrierVehicleTypeController = TextEditingController();
   final _carrierVehiclePlateController = TextEditingController();
   final _carrierServiceAreaController = TextEditingController();
+
+  final _scrollController = ScrollController();
+  final _kFirstName = GlobalKey();
+  final _kLastName = GlobalKey();
+  final _kEmail = GlobalKey();
+  final _kPassword = GlobalKey();
+  final _kPasswordConfirm = GlobalKey();
+  final _kPhone = GlobalKey();
+  final _kVehicleType = GlobalKey();
+  final _kVehiclePlate = GlobalKey();
+
+  final _firstNameFocus = FocusNode();
+  final _lastNameFocus = FocusNode();
+  final _emailFocus = FocusNode();
+  final _passwordFocus = FocusNode();
+  final _passwordConfirmFocus = FocusNode();
+  final _phoneFocus = FocusNode();
+  final _vehicleTypeFocus = FocusNode();
+  final _vehiclePlateFocus = FocusNode();
 
   bool _isLoading = false;
   String? _error;
@@ -75,13 +99,33 @@ class _AuthFlowScreenState extends State<AuthFlowScreen> {
     _emailController.dispose();
     _passwordController.dispose();
     _passwordConfirmController.dispose();
-    _fullNameController.dispose();
+    _firstNameController.dispose();
+    _lastNameController.dispose();
     _phoneController.dispose();
-    _senderAddressController.dispose();
     _carrierVehicleTypeController.dispose();
     _carrierVehiclePlateController.dispose();
     _carrierServiceAreaController.dispose();
+    _scrollController.dispose();
+    _firstNameFocus.dispose();
+    _lastNameFocus.dispose();
+    _emailFocus.dispose();
+    _passwordFocus.dispose();
+    _passwordConfirmFocus.dispose();
+    _phoneFocus.dispose();
+    _vehicleTypeFocus.dispose();
+    _vehiclePlateFocus.dispose();
     super.dispose();
+  }
+
+  Future<void> _scrollToKey(GlobalKey key) async {
+    final ctx = key.currentContext;
+    if (ctx == null) return;
+    await Scrollable.ensureVisible(
+      ctx,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      alignment: 0.2,
+    );
   }
 
   @override
@@ -139,7 +183,7 @@ class _AuthFlowScreenState extends State<AuthFlowScreen> {
               icon: Icons.send_outlined,
               title: 'Gönderici',
               description: 'Paketlerini farklı şehirlere güvenle gönder.',
-              color: TrustShipColors.primaryRed,
+              color: BiTasiColors.primaryRed,
               onTap: () {
                 setState(() {
                   _currentView = AuthView.senderRegistration;
@@ -151,7 +195,7 @@ class _AuthFlowScreenState extends State<AuthFlowScreen> {
               icon: Icons.directions_car,
               title: 'Taşıyıcı',
               description: 'Yolculuklarını kazanca çevir, kargo taşı.',
-              color: TrustShipColors.successGreen,
+              color: BiTasiColors.successGreen,
               onTap: () {
                 setState(() {
                   _currentView = AuthView.carrierRegistration;
@@ -176,11 +220,9 @@ class _AuthFlowScreenState extends State<AuthFlowScreen> {
       onTap: onTap,
       child: Ink(
         decoration: BoxDecoration(
-          // ignore: deprecated_member_use
-          color: color.withOpacity(0.06),
+          color: color.withAlpha(15),
           borderRadius: BorderRadius.circular(18),
-          // ignore: deprecated_member_use
-          border: Border.all(color: color.withOpacity(0.35)),
+          border: Border.all(color: color.withAlpha(89)),
         ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
@@ -188,8 +230,7 @@ class _AuthFlowScreenState extends State<AuthFlowScreen> {
             children: [
               CircleAvatar(
                 radius: 22,
-                // ignore: deprecated_member_use
-                backgroundColor: color.withOpacity(0.12),
+                backgroundColor: color.withAlpha(31),
                 child: Icon(icon, color: color),
               ),
               const SizedBox(width: 14),
@@ -224,6 +265,7 @@ class _AuthFlowScreenState extends State<AuthFlowScreen> {
     final isSender = role == 'sender';
 
     return SingleChildScrollView(
+      controller: _scrollController,
       padding: const EdgeInsets.all(24),
       child: Center(
         child: ConstrainedBox(
@@ -276,79 +318,111 @@ class _AuthFlowScreenState extends State<AuthFlowScreen> {
                   ),
                 ),
               ],
-              const Text(
-                'E-posta Adresi',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-              ),
-              const SizedBox(height: 6),
-              TextField(
-                controller: _emailController,
-                keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(
-                  hintText: 'ornek@eposta.com',
-                  prefixIcon: Icon(Icons.email_outlined),
-                ),
-                onChanged: (_) {
-                  if (_error != null) {
-                    setState(() {
-                      _error = null;
-                    });
-                  }
-                },
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'Şifre',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-              ),
-              const SizedBox(height: 6),
-              TextField(
-                controller: _passwordController,
-                obscureText: true,
-                decoration: const InputDecoration(
-                  hintText: 'En az 6 karakter',
-                  prefixIcon: Icon(Icons.lock_outline),
-                ),
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'Şifre (Tekrar)',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-              ),
-              const SizedBox(height: 6),
-              TextField(
-                controller: _passwordConfirmController,
-                obscureText: true,
-                decoration: const InputDecoration(
-                  hintText: 'Şifreni tekrar gir',
-                  prefixIcon: Icon(Icons.lock_outline),
-                ),
-              ),
-              const SizedBox(height: 16),
-              _buildCommonFields(),
-              const SizedBox(height: 16),
-              isSender ? _buildSenderFields() : _buildCarrierFields(),
-              const SizedBox(height: 20),
-              SizedBox(
-                height: 52,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: TrustShipColors.primaryRed,
-                  ),
-                  onPressed: _isLoading ? null : () => _handleRegister(role),
-                  child: _isLoading
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                          ),
-                        )
-                      : const Text(
-                          'Kayıt Ol',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                        ),
+              AppSectionCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Container(
+                      key: _kFirstName,
+                      child: AppTextField(
+                        label: 'İsim',
+                        controller: _firstNameController,
+                        hintText: 'Adınız (örn: Ahmet Can)',
+                        prefixIcon: Icons.person_outline,
+                        textCapitalization: TextCapitalization.words,
+                        inputFormatters: const [TrNameFormatter()],
+                        enabled: !_isLoading,
+                        textInputAction: TextInputAction.next,
+                        focusNode: _firstNameFocus,
+                        nextFocusNode: _lastNameFocus,
+                        onChanged: (_) {
+                          if (_error != null) setState(() => _error = null);
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: AppSpace.md),
+                    Container(
+                      key: _kLastName,
+                      child: AppTextField(
+                        label: 'Soyad',
+                        controller: _lastNameController,
+                        hintText: 'Soyadınız',
+                        prefixIcon: Icons.badge_outlined,
+                        textCapitalization: TextCapitalization.words,
+                        inputFormatters: const [TrNameFormatter()],
+                        enabled: !_isLoading,
+                        textInputAction: TextInputAction.next,
+                        focusNode: _lastNameFocus,
+                        nextFocusNode: _emailFocus,
+                        onChanged: (_) {
+                          if (_error != null) setState(() => _error = null);
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: AppSpace.md),
+                    Container(
+                      key: _kEmail,
+                      child: AppTextField(
+                        label: 'E-posta',
+                        controller: _emailController,
+                        hintText: 'ornek@eposta.com',
+                        prefixIcon: Icons.email_outlined,
+                        keyboardType: TextInputType.emailAddress,
+                        enabled: !_isLoading,
+                        textInputAction: TextInputAction.next,
+                        focusNode: _emailFocus,
+                        nextFocusNode: _passwordFocus,
+                        onChanged: (_) {
+                          if (_error != null) setState(() => _error = null);
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: AppSpace.md),
+                    Container(
+                      key: _kPassword,
+                      child: AppTextField(
+                        label: 'Şifre',
+                        controller: _passwordController,
+                        hintText: 'En az 6 karakter',
+                        prefixIcon: Icons.lock_outline,
+                        obscureText: true,
+                        enabled: !_isLoading,
+                        textInputAction: TextInputAction.next,
+                        focusNode: _passwordFocus,
+                        nextFocusNode: _passwordConfirmFocus,
+                      ),
+                    ),
+                    const SizedBox(height: AppSpace.md),
+                    Container(
+                      key: _kPasswordConfirm,
+                      child: AppTextField(
+                        label: 'Şifre (Tekrar)',
+                        controller: _passwordConfirmController,
+                        hintText: 'Şifreni tekrar gir',
+                        prefixIcon: Icons.lock_outline,
+                        obscureText: true,
+                        enabled: !_isLoading,
+                        textInputAction: TextInputAction.next,
+                        focusNode: _passwordConfirmFocus,
+                        nextFocusNode: _phoneFocus,
+                      ),
+                    ),
+                    const SizedBox(height: AppSpace.lg),
+                    Container(
+                      key: _kPhone,
+                      child: _buildCommonFields(),
+                    ),
+                    const SizedBox(height: AppSpace.lg),
+                    if (!isSender) ...[
+                      Container(key: _kVehicleType, child: _buildCarrierFields()),
+                      const SizedBox(height: AppSpace.lg),
+                    ],
+                    AppButton.primary(
+                      label: 'Kayıt Ol',
+                      isLoading: _isLoading,
+                      onPressed: _isLoading ? null : () => _handleRegister(role),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -362,32 +436,16 @@ class _AuthFlowScreenState extends State<AuthFlowScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Tam İsim',
-          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-        ),
-        const SizedBox(height: 6),
-        TextField(
-          controller: _fullNameController,
-          decoration: const InputDecoration(
-            hintText: 'Tam adınız',
-            prefixIcon: Icon(Icons.person_outline),
-          ),
-        ),
-        const SizedBox(height: 12),
-        const Text(
-          'Telefon',
-          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-        ),
-        const SizedBox(height: 6),
-        TextField(
+        AppTextField(
+          label: 'Telefon',
           controller: _phoneController,
+          hintText: _phoneHint,
+          prefixIcon: Icons.phone_outlined,
           keyboardType: TextInputType.phone,
           inputFormatters: const [TrPhoneHyphenFormatter()],
-          decoration: InputDecoration(
-            hintText: _phoneHint,
-            prefixIcon: const Icon(Icons.phone_outlined),
-          ),
+          enabled: !_isLoading,
+          textInputAction: TextInputAction.done,
+          focusNode: _phoneFocus,
         ),
       ],
     );
@@ -404,68 +462,45 @@ class _AuthFlowScreenState extends State<AuthFlowScreen> {
     return '${raw.substring(0, 3)}-${raw.substring(3, 6)}-${raw.substring(6)}';
   }
 
-  Widget _buildSenderFields() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Gönderi Bölgesi / Adres',
-          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-        ),
-        const SizedBox(height: 6),
-        TextField(
-          controller: _senderAddressController,
-          decoration: const InputDecoration(
-            hintText: 'Şehir, semt veya özel adres',
-            prefixIcon: Icon(Icons.location_on_outlined),
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _buildCarrierFields() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Araç Tipi',
-          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-        ),
-        const SizedBox(height: 6),
-        TextField(
-          controller: _carrierVehicleTypeController,
-          decoration: const InputDecoration(
+        Container(
+          key: _kVehicleType,
+          child: AppTextField(
+            label: 'Araç Tipi',
+            controller: _carrierVehicleTypeController,
             hintText: 'Otomobil, panelvan, kamyonet vb.',
-            prefixIcon: Icon(Icons.local_shipping_outlined),
+            prefixIcon: Icons.local_shipping_outlined,
+            enabled: !_isLoading,
+            textInputAction: TextInputAction.next,
+            focusNode: _vehicleTypeFocus,
+            nextFocusNode: _vehiclePlateFocus,
           ),
         ),
-        const SizedBox(height: 12),
-        const Text(
-          'Araç Plakası',
-          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-        ),
-        const SizedBox(height: 6),
-        TextField(
-          controller: _carrierVehiclePlateController,
-          textCapitalization: TextCapitalization.characters,
-          decoration: const InputDecoration(
+        const SizedBox(height: AppSpace.md),
+        Container(
+          key: _kVehiclePlate,
+          child: AppTextField(
+            label: 'Araç Plakası',
+            controller: _carrierVehiclePlateController,
             hintText: '34ABC34',
-            prefixIcon: Icon(Icons.badge_outlined),
+            prefixIcon: Icons.badge_outlined,
+            textCapitalization: TextCapitalization.characters,
+            enabled: !_isLoading,
+            textInputAction: TextInputAction.next,
+            focusNode: _vehiclePlateFocus,
           ),
         ),
-        const SizedBox(height: 12),
-        const Text(
-          'Servis Bölgesi',
-          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-        ),
-        const SizedBox(height: 6),
-        TextField(
+        const SizedBox(height: AppSpace.md),
+        AppTextField(
+          label: 'Servis Bölgesi',
           controller: _carrierServiceAreaController,
-          decoration: const InputDecoration(
-            hintText: 'Çalıştığınız şehir / gece rotası',
-            prefixIcon: Icon(Icons.public),
-          ),
+          hintText: 'Çalıştığınız şehir / gece rotası',
+          prefixIcon: Icons.public,
+          enabled: !_isLoading,
+          textInputAction: TextInputAction.done,
         ),
       ],
     );
@@ -475,33 +510,53 @@ class _AuthFlowScreenState extends State<AuthFlowScreen> {
     final email = _emailController.text.trim();
     final password = _passwordController.text;
     final confirm = _passwordConfirmController.text;
-    final fullName = _fullNameController.text.trim();
+    final firstName = _firstNameController.text.trim();
+    final lastName = _lastNameController.text.trim();
+    final fullName = '$firstName $lastName'.trim();
     final phone = _normalizePhone(_phoneController.text);
 
-    // E-posta opsiyonel. Girildiyse format kontrolü yap.
-    if (email.isNotEmpty && !RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email)) {
+    if (email.isEmpty) {
       setState(() {
-        _error = 'Lütfen geçerli bir e-posta gir.';
+        _error = 'Lütfen e-posta gir.';
       });
+      await _scrollToKey(_kEmail);
       return;
     }
 
-    if (fullName.isEmpty || phone == null) {
+    // E-posta format kontrolü.
+    if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email)) {
       setState(() {
-        _error = 'İsim ve geçerli telefon (5xxxxxxxxx) bilgilerini gir.';
+        _error = 'Lütfen geçerli bir e-posta gir.';
       });
+      await _scrollToKey(_kEmail);
+      return;
+    }
+
+    if (firstName.isEmpty || lastName.isEmpty || phone == null) {
+      setState(() {
+        _error = 'İsim, soyad ve geçerli telefon (5xxxxxxxxx) bilgilerini gir.';
+      });
+      if (firstName.isEmpty) {
+        await _scrollToKey(_kFirstName);
+      } else if (lastName.isEmpty) {
+        await _scrollToKey(_kLastName);
+      } else {
+        await _scrollToKey(_kPhone);
+      }
       return;
     }
     if (password.length < 6) {
       setState(() {
         _error = 'Şifre en az 6 karakter olmalıdır.';
       });
+      await _scrollToKey(_kPassword);
       return;
     }
     if (password != confirm) {
       setState(() {
         _error = 'Şifreler eşleşmiyor.';
       });
+      await _scrollToKey(_kPasswordConfirm);
       return;
     }
 
@@ -516,14 +571,6 @@ class _AuthFlowScreenState extends State<AuthFlowScreen> {
         'phone': phone,
       };
       if (role == 'sender') {
-        final address = _senderAddressController.text.trim();
-        if (address.isEmpty) {
-          setState(() {
-            _error = 'Gönderim yapan olarak adres bilgisi gereklidir.';
-          });
-          return;
-        }
-        profile['address'] = address;
       } else {
         final vehicleType = _carrierVehicleTypeController.text.trim();
         final vehiclePlate = _carrierVehiclePlateController.text.trim();
@@ -532,6 +579,7 @@ class _AuthFlowScreenState extends State<AuthFlowScreen> {
           setState(() {
             _error = 'Araç tipi ve plaka giriniz.';
           });
+          await _scrollToKey(vehicleType.isEmpty ? _kVehicleType : _kVehiclePlate);
           return;
         }
         profile['vehicleType'] = vehicleType;
@@ -625,6 +673,23 @@ class _AuthFlowScreenState extends State<AuthFlowScreen> {
           if (idToken == null) {
             throw StateError('Firebase token alınamadı');
           }
+          if (!mounted) return;
+
+          if (role == 'sender') {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) => SenderCompanyInfoScreen(
+                  firebaseIdToken: idToken,
+                  email: email,
+                  password: password,
+                  profile: profile,
+                ),
+              ),
+            );
+            return;
+          }
+
           await apiClient.registerWithFirebaseIdToken(
             idToken,
             role: role,
@@ -671,6 +736,59 @@ class _AuthFlowScreenState extends State<AuthFlowScreen> {
       },
       codeAutoRetrievalTimeout: (_) {},
       forceResendingToken: _lastResendToken,
+    );
+  }
+}
+
+class TrNameFormatter extends TextInputFormatter {
+  const TrNameFormatter();
+
+  String _upperTr(String s) {
+    if (s.isEmpty) return s;
+    return s
+        .replaceAll('i', 'İ')
+        .replaceAll('ı', 'I')
+        .toUpperCase();
+  }
+
+  String _lowerTr(String s) {
+    if (s.isEmpty) return s;
+    return s
+        .replaceAll('I', 'ı')
+        .replaceAll('İ', 'i')
+        .toLowerCase();
+  }
+
+  String _toNameCase(String input) {
+    final endsWithSpace = input.isNotEmpty && RegExp(r'\s$').hasMatch(input);
+    final normalized = input.replaceAll(RegExp(r'\s+'), ' ').trimLeft();
+    if (normalized.isEmpty) return '';
+
+    final parts = normalized.split(' ');
+    final cased = parts.map((p) {
+      final word = p.trim();
+      if (word.isEmpty) return '';
+      if (word.length == 1) return _upperTr(word);
+      final first = _upperTr(word[0]);
+      final rest = _lowerTr(word.substring(1));
+      return '$first$rest';
+    }).where((p) => p.isNotEmpty);
+    final result = cased.join(' ');
+
+    // Kullanıcı ikinci isme geçmek için boşluk yazdığında, formatter boşluğu anında
+    // silmesin; tek bir trailing boşluğu koru.
+    if (endsWithSpace && result.isNotEmpty) {
+      return '$result ';
+    }
+    return result;
+  }
+
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+    final formatted = _toNameCase(newValue.text);
+    return TextEditingValue(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: formatted.length),
     );
   }
 }

@@ -5,9 +5,10 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:pin_code_fields/pin_code_fields.dart';
 
-import '../services/api_client.dart';
-import '../theme/trustship_theme.dart';
-import 'main_wrapper.dart';
+import '../../services/api_client.dart';
+import '../../theme/bitasi_theme.dart';
+import '../main_wrapper.dart';
+import '../sender/sender_company_info_screen.dart';
 
 class OtpVerificationScreen extends StatefulWidget {
   const OtpVerificationScreen({
@@ -128,6 +129,23 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
       final idToken = await userCred.user?.getIdToken(true);
       if (idToken == null) {
         throw StateError('Firebase token alınamadı');
+      }
+
+      if (!mounted) return;
+
+      if (widget.role == 'sender') {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => SenderCompanyInfoScreen(
+              firebaseIdToken: idToken,
+              email: widget.email,
+              password: widget.password,
+              profile: widget.profile,
+            ),
+          ),
+        );
+        return;
       }
 
       await apiClient.registerWithFirebaseIdToken(
@@ -269,9 +287,9 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                       activeFillColor: Colors.white,
                       inactiveFillColor: Colors.white,
                       selectedFillColor: Colors.white,
-                      activeColor: TrustShipColors.primaryRed,
+                      activeColor: BiTasiColors.primaryRed,
                       inactiveColor: Colors.grey.shade300,
-                      selectedColor: TrustShipColors.primaryRed,
+                      selectedColor: BiTasiColors.primaryRed,
                     ),
                     onChanged: (_) {
                       if (_error != null) {
@@ -286,7 +304,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                     height: 52,
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: TrustShipColors.primaryRed,
+                        backgroundColor: BiTasiColors.primaryRed,
                       ),
                       onPressed: _isVerifying ? null : _verifyCode,
                       child: _isVerifying

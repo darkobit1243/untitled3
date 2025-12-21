@@ -1,15 +1,15 @@
-// lib/screens/login_screen.dart
+// lib/screens/auth/login_screen.dart
 
 import 'package:flutter/material.dart';
 
-import '../services/api_client.dart';
-import '../services/push_notifications.dart';
-import '../services/push_config.dart';
-import '../theme/trustship_theme.dart';
+import '../../services/api_client.dart';
+import '../../services/push_notifications.dart';
+import '../../services/push_config.dart';
+import '../../theme/bitasi_theme.dart';
 import 'auth_flow_screen.dart';
-import 'main_wrapper.dart'; // Giriş başarılı olursa buraya gidecek
+import '../main_wrapper.dart'; // Giriş başarılı olursa buraya gidecek
 
-const String kLoginLogoAssetPath = 'assets/branding/app_logo.png';
+const String kLoginHeaderLogoTextAssetPath = 'assets/branding/app_logo_metin.png';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -74,90 +74,112 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final baseTheme = Theme.of(context);
+    final brandRed = BiTasiColors.bitasiRed;
+    final loginTheme = baseTheme.copyWith(
+      colorScheme: baseTheme.colorScheme.copyWith(
+        primary: brandRed,
+        secondary: brandRed,
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: brandRed,
+          foregroundColor: Colors.white,
+          minimumSize: const Size(double.infinity, 56),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          elevation: 0,
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          side: BorderSide(color: brandRed.withAlpha(120)),
+          foregroundColor: brandRed,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
+      inputDecorationTheme: baseTheme.inputDecorationTheme.copyWith(
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: brandRed, width: 2),
+        ),
+      ),
+    );
+
     return Scaffold(
+      backgroundColor: brandRed,
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 480),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                // Logo & Hero
-                Column(
+        child: Theme(
+          data: loginTheme,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 480),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    const SizedBox(height: 4),
-                    Image.asset(
-                      kLoginLogoAssetPath,
-                      width: 112,
-                      height: 112,
-                      fit: BoxFit.contain,
-                      filterQuality: FilterQuality.high,
-                      semanticLabel: 'BiTaşı logo',
-                      errorBuilder: (_, __, ___) => const Icon(
-                        Icons.local_shipping_outlined,
-                        size: 64,
-                        color: TrustShipColors.primaryRed,
+                    // Header (logo text)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 18, bottom: 10),
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          final logoWidth = (constraints.maxWidth * 0.94).clamp(320.0, 440.0);
+                          return Column(
+                            children: [
+                              Image.asset(
+                                kLoginHeaderLogoTextAssetPath,
+                                width: logoWidth,
+                                height: 128,
+                                fit: BoxFit.fitWidth,
+                                filterQuality: FilterQuality.high,
+                                semanticLabel: 'BiTaşı',
+                                errorBuilder: (_, __, ___) => const Text(
+                                  'BiTaşı',
+                                  style: TextStyle(
+                                    fontSize: 38,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.white,
+                                    letterSpacing: 0.2,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              const Text(
+                                'Eşler arası güvenli lojistik platformu',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          );
+                        },
                       ),
                     ),
-                    const SizedBox(height: 10),
-                    const Text(
-                      'BiTaşı',
-                      style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.w700,
-                        color: TrustShipColors.primaryRed,
-                        letterSpacing: 0.2,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      'Eşler arası güvenli lojistik platformu',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: TrustShipColors.textDarkGrey,
-                      ),
-                    ),
-                  ],
-                ),
 
-                const SizedBox(height: 18),
-
-                // Trust badges
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: const [
-                    Icon(Icons.shield_outlined, size: 18, color: TrustShipColors.successGreen),
-                    SizedBox(width: 4),
-                    Text('Güvenli', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                    SizedBox(width: 16),
-                    Icon(Icons.local_shipping, size: 18, color: TrustShipColors.successGreen),
-                    SizedBox(width: 4),
-                    Text('Hızlı', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                  ],
-                ),
-
-                const SizedBox(height: 22),
-
-                // Login Card
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 420),
-                  child: Card(
-                    clipBehavior: Clip.antiAlias,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
+                    // Login Card
+                    const SizedBox(height: 22),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 420),
+                      child: Card(
+                        clipBehavior: Clip.antiAlias,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
                           const Text(
                             'Giriş Yap',
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.w700,
-                              color: TrustShipColors.textDarkGrey,
+                              color: BiTasiColors.textDarkGrey,
                             ),
                           ),
                           const SizedBox(height: 4),
@@ -174,13 +196,13 @@ class _LoginScreenState extends State<LoginScreen> {
                               padding: const EdgeInsets.all(12),
                               margin: const EdgeInsets.only(bottom: 12),
                               decoration: BoxDecoration(
-                                color: TrustShipColors.errorRed.withAlpha(20),
+                                color: BiTasiColors.errorRed.withAlpha(20),
                                 borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: TrustShipColors.errorRed.withAlpha(64)),
+                                border: Border.all(color: BiTasiColors.errorRed.withAlpha(64)),
                               ),
                               child: Text(
                                 _error!,
-                                style: const TextStyle(color: TrustShipColors.errorRed, fontSize: 13),
+                                style: const TextStyle(color: BiTasiColors.errorRed, fontSize: 13),
                               ),
                             ),
                           ],
@@ -257,9 +279,6 @@ class _LoginScreenState extends State<LoginScreen> {
                           SizedBox(
                             height: 52,
                             child: ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: TrustShipColors.primaryRed,
-                              ),
                               onPressed: _isLoading ? null : _handleLogin,
                               child: _isLoading
                                   ? const SizedBox(
@@ -303,26 +322,27 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             child: const Text('Kayıt Ol'),
                           ),
-                        ],
+                            ],
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ),
 
-                const SizedBox(height: 16),
+                    const SizedBox(height: 16),
 
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 24),
-                  child: Text(
-                    'Devam ederek BiTaşı Kullanım Şartları ve Gizlilik Politikası\'nı kabul etmiş olursunuz.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: TrustShipColors.textDarkGrey,
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 24),
+                      child: Text(
+                        'Devam ederek BiTaşı Kullanım Şartları ve Gizlilik Politikası\'nı kabul etmiş olursunuz.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.white,
+                        ),
+                      ),
                     ),
-                  ),
+                  ],
                 ),
-                ],
               ),
             ),
           ),

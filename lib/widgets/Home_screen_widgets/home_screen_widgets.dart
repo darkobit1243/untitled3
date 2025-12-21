@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../theme/trustship_theme.dart';
+import '../../theme/bitasi_theme.dart';
 
 /// Widgets used by HomeScreen grouped in a single file to reduce clutter.
 
@@ -96,8 +96,8 @@ class NearbyListings extends StatelessWidget {
               separatorBuilder: (_, __) => const SizedBox(width: 12),
               itemBuilder: (context, index) {
                 final item = listings[index];
-                final pickup = item['pickup_location']?['address']?.toString() ?? '?';
-                final dropoff = item['dropoff_location']?['address']?.toString() ?? '?';
+                final pickup = item['pickup_location']?['display']?.toString() ?? item['pickup_location']?['address']?.toString() ?? '?';
+                final dropoff = item['dropoff_location']?['display']?.toString() ?? item['dropoff_location']?['address']?.toString() ?? '?';
                 final distance = (item['__distance'] as double?)?.toStringAsFixed(1) ?? '?';
                 final title = item['title']?.toString() ?? 'İlan';
                 final price = item['price']?.toString() ?? 'Teklif yok';
@@ -143,7 +143,7 @@ class NearbyListings extends StatelessWidget {
                         ElevatedButton(
                           onPressed: () => onOfferPressed(item),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: TrustShipColors.primaryRed,
+                            backgroundColor: BiTasiColors.primaryRed,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                           ),
@@ -164,7 +164,7 @@ class NearbyListings extends StatelessWidget {
   Widget _chip(String text) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(color: TrustShipColors.backgroundGrey, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade300)),
+      decoration: BoxDecoration(color: BiTasiColors.backgroundGrey, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade300)),
       child: Text(text, style: const TextStyle(fontSize: 12, color: Colors.black87, fontWeight: FontWeight.w600)),
     );
   }
@@ -246,14 +246,14 @@ class ListingCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final title = listing['title']?.toString() ?? 'Başlık yok';
-    final pickup = listing['pickup_location']?['address']?.toString() ?? '?';
-    final dropoff = listing['dropoff_location']?['address']?.toString() ?? '?';
+    final pickup = listing['pickup_location']?['display']?.toString() ?? listing['pickup_location']?['address']?.toString() ?? '?';
+    final dropoff = listing['dropoff_location']?['display']?.toString() ?? listing['dropoff_location']?['address']?.toString() ?? '?';
     final weight = listing['weight']?.toString() ?? '-';
     final listingId = listing['id']?.toString() ?? '';
     final statusRaw = listing['status']?.toString() ?? listing['deliveryStatus']?.toString() ?? listing['delivery_state']?.toString();
 
     String statusLabel = 'Teklif Bekliyor';
-    Color statusColor = TrustShipColors.primaryRed;
+    Color statusColor = BiTasiColors.primaryRed;
     if (statusRaw != null) {
       switch (statusRaw) {
         case 'accepted':
@@ -275,7 +275,7 @@ class ListingCard extends StatelessWidget {
           break;
         default:
           statusLabel = 'Teklif Bekliyor';
-          statusColor = TrustShipColors.primaryRed;
+          statusColor = BiTasiColors.primaryRed;
       }
     }
 
@@ -342,7 +342,7 @@ class SelectedAddressChip extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(Icons.place, color: TrustShipColors.primaryRed, size: 20),
+          const Icon(Icons.place, color: BiTasiColors.primaryRed, size: 20),
           const SizedBox(width: 8),
           Expanded(
             child: Text(

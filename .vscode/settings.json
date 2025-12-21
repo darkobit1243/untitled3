@@ -1,0 +1,8 @@
+{
+  "dart.flutterRunAdditionalArgs": [
+    "--dart-define-from-file=dart_defines.json"
+  ],
+  "dart.flutterTestAdditionalArgs": [
+    "--dart-define-from-file=dart_defines.json"
+  ]
+}

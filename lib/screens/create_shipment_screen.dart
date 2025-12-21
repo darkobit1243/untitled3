@@ -14,7 +14,6 @@ import 'package:image_picker/image_picker.dart';
 import '../services/api_client.dart';
 import '../services/google_api_keys.dart';
 import '../services/location_gate.dart';
-import 'home_common.dart';
 import 'location_picker_screen.dart';
 
 class CreateShipmentScreen extends StatefulWidget {
@@ -48,7 +47,8 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
   final Set<Marker> _markers = {};
   final Set<Polyline> _polylines = {};
 
-  BitmapDescriptor? _cargoPinIcon;
+  BitmapDescriptor? _pickupMarkerIcon;
+  BitmapDescriptor? _dropoffMarkerIcon;
 
   // (Autocomplete bu ekranda değil, tam ekran LocationPicker'da yapılıyor)
 
@@ -68,10 +68,21 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
 
   Future<void> _prepareMarkerIcons() async {
     try {
-      final icon = await createCargoPinMarkerBitmapDescriptor(size: 86);
+      const markerSize = 56.0;
+      const config = ImageConfiguration(size: Size(markerSize, markerSize));
+
+      final pickupIcon = await BitmapDescriptor.asset(
+        config,
+        'assets/markers/Alis_noktasi.png',
+      );
+      final dropoffIcon = await BitmapDescriptor.asset(
+        config,
+        'assets/markers/Varis_noktasi.png',
+      );
       if (!mounted) return;
       setState(() {
-        _cargoPinIcon = icon;
+        _pickupMarkerIcon = pickupIcon;
+        _dropoffMarkerIcon = dropoffIcon;
       });
       _updateMarkersAndRoute();
     } catch (_) {
@@ -219,6 +230,7 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
                         builder: (context) => LocationPickerScreen(
                           title: 'Alış Noktası Seç',
                           initialPosition: _pickupLocation ?? _currentLocation,
+                          markerKind: LocationPickerMarkerKind.pickup,
                         ),
                       ),
                     );
@@ -248,6 +260,7 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
                         builder: (context) => LocationPickerScreen(
                           title: 'Teslim Noktası Seç',
                           initialPosition: _dropoffLocation ?? _currentLocation,
+                          markerKind: LocationPickerMarkerKind.dropoff,
                         ),
                       ),
                     );
@@ -538,7 +551,8 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
             markerId: const MarkerId('pickup'),
             position: _pickupLocation!,
             infoWindow: const InfoWindow(title: 'Alış Noktası'),
-            icon: _cargoPinIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
+            icon: _pickupMarkerIcon ??
+                BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
           ),
         );
       }
@@ -549,7 +563,8 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
             markerId: const MarkerId('dropoff'),
             position: _dropoffLocation!,
             infoWindow: const InfoWindow(title: 'Teslim Noktası'),
-            icon: _cargoPinIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+            icon: _dropoffMarkerIcon ??
+                BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
           ),
         );
       }
@@ -566,7 +581,7 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
     try {
       assert(
         GoogleApiKeys.mapsWebApiKey.isNotEmpty,
-        'Missing GOOGLE_MAPS_WEB_API_KEY (pass via --dart-define).',
+        'Missing GOOGLE_MAPS_WEB_API_KEY (pass via --dart-define or --dart-define-from-file=dart_defines.json; hot restart will not pick it up).',
       );
       final response = await _dio.get(
         'https://maps.googleapis.com/maps/api/directions/json',

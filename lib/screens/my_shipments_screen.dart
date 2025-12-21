@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../services/api_client.dart';
 import '../services/app_settings.dart';
+import '../services/google_places_service.dart';
+import '../services/location_label_cache.dart';
+import '../models/delivery_status.dart';
 import 'live_tracking_screen.dart';
-import '../theme/trustship_theme.dart';
+import '../theme/bitasi_theme.dart';
 
 class MyShipmentsScreen extends StatefulWidget {
   const MyShipmentsScreen({super.key, this.initialOpenOffersListingId});
@@ -19,6 +24,11 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
   bool _isLoading = true;
   List<dynamic> _activeListings = [];
   List<dynamic> _historyListings = [];
+
+  final Dio _dio = Dio();
+  late final GooglePlacesService _places = GooglePlacesService(_dio);
+  final Map<String, String> _locationLabelCache = <String, String>{};
+  final Set<String> _locationLabelInFlight = <String>{};
 
   final Set<String> _ratedDeliveryIds = <String>{};
 
@@ -47,15 +57,43 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
       _isLoading = true;
     });
     try {
-      // Fetch both listings and deliveries (accepted offers)
-      final listingsData = await apiClient.fetchMyListings();
-      final deliveriesData = await apiClient.fetchSenderDeliveries(); // accepted offers/deliveries for this sender
+      // Fetch listings + deliveries + my ratings concurrently for faster loading.
+      final results = await Future.wait<dynamic>([
+        apiClient.fetchMyListings(),
+        apiClient.fetchSenderDeliveries(),
+        apiClient.fetchMyGivenRatings().catchError((_) => <dynamic>[]),
+      ]);
+
+      final listingsData = results[0] is List ? List<dynamic>.from(results[0] as List) : <dynamic>[];
+      final deliveriesData = results[1] is List ? List<dynamic>.from(results[1] as List) : <dynamic>[];
+      final mineRatings = results[2] is List ? List<dynamic>.from(results[2] as List) : <dynamic>[];
+
+      // Only hide listings from the active list if the related delivery is delivered.
+      // For pickup pending / in transit we keep the listing in active, as requested.
+      final deliveredListingIds = <String>{};
+      for (final d in deliveriesData) {
+        if (d is! Map) continue;
+        final status = d['status']?.toString().toLowerCase() ?? '';
+        if (status != DeliveryStatus.delivered) continue;
+
+        final listingId = d['listingId']?.toString() ?? (d['listing'] is Map ? (d['listing'] as Map)['id']?.toString() : null);
+        if (listingId != null && listingId.isNotEmpty) {
+          deliveredListingIds.add(listingId);
+        }
+      }
 
       final active = <dynamic>[];
       final history = <dynamic>[];
 
       // Add listings
       for (final listing in listingsData) {
+        if (listing is Map) {
+          final listingId = listing['id']?.toString() ?? '';
+          if (listingId.isNotEmpty && deliveredListingIds.contains(listingId)) {
+            // Delivered shipments should not appear under active listings.
+            continue;
+          }
+        }
         active.add({'type': 'listing', 'data': listing});
       }
 
@@ -63,8 +101,12 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
 
       // Add accepted deliveries (these are accepted offers)
       for (final delivery in deliveriesData) {
-        final status = delivery['status']?.toString() ?? '';
-        if (status == 'in_transit' || status == 'pickup_pending') {
+        if (delivery is! Map) {
+          history.add({'type': 'delivery', 'data': delivery});
+          continue;
+        }
+        final status = delivery['status']?.toString().toLowerCase() ?? '';
+        if (status == DeliveryStatus.inTransit || status == DeliveryStatus.pickupPending) {
           active.add({'type': 'delivery', 'data': delivery});
         } else {
           history.add({'type': 'delivery', 'data': delivery});
@@ -73,16 +115,11 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
 
       // Fetch current user's given ratings once; used to hide "Puan Ver".
       final ratedIds = <String>{};
-      try {
-        final mine = await apiClient.fetchMyGivenRatings();
-        for (final r in mine) {
-          if (r is Map<String, dynamic>) {
-            final deliveryId = r['deliveryId']?.toString() ?? '';
-            if (deliveryId.isNotEmpty) ratedIds.add(deliveryId);
-          }
+      for (final r in mineRatings) {
+        if (r is Map) {
+          final deliveryId = r['deliveryId']?.toString() ?? '';
+          if (deliveryId.isNotEmpty) ratedIds.add(deliveryId);
         }
-      } catch (_) {
-        // Ignore: ratings not critical for list rendering.
       }
 
       if (!mounted) return;
@@ -93,6 +130,10 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
           ..clear()
           ..addAll(ratedIds);
       });
+
+      // Fill pickup/dropoff labels in the background.
+      // ignore: unawaited_futures
+      _hydrateAddressLabels();
 
       _maybeAutoOpenOffers();
     } catch (e) {
@@ -108,6 +149,126 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
         });
       }
     }
+  }
+
+  Map<String, dynamic>? _asStringMap(dynamic value) {
+    if (value is Map<String, dynamic>) return value;
+    if (value is Map) {
+      return value.map((k, v) => MapEntry(k.toString(), v));
+    }
+    return null;
+  }
+
+  Future<void> _hydrateAddressLabels() async {
+    final items = <dynamic>[..._activeListings, ..._historyListings];
+
+    // Sequential requests to avoid hammering Geocoding API.
+    var anyUpdates = false;
+    var updatesSinceLastSetState = 0;
+    for (final entry in items) {
+      if (!mounted) return;
+      if (entry is! Map) continue;
+      final type = entry['type']?.toString();
+      final data = entry['data'];
+      final dataMap = _asStringMap(data);
+      if (dataMap == null) continue;
+
+      Map<String, dynamic>? listing;
+      if (type == 'listing') {
+        listing = dataMap;
+      } else if (type == 'delivery') {
+        listing = _asStringMap(dataMap['listing']);
+      }
+      if (listing == null) continue;
+
+      final listingId = listing['id']?.toString() ?? dataMap['listingId']?.toString();
+      final pickupUpdated = await _ensureLocationLabel(
+        listingId: listingId,
+        listing: listing,
+        locationKey: 'pickup_location',
+      );
+      final dropoffUpdated = await _ensureLocationLabel(
+        listingId: listingId,
+        listing: listing,
+        locationKey: 'dropoff_location',
+      );
+
+      if (!mounted) return;
+      final updatedCount = (pickupUpdated ? 1 : 0) + (dropoffUpdated ? 1 : 0);
+      if (updatedCount > 0) {
+        anyUpdates = true;
+        updatesSinceLastSetState += updatedCount;
+        // Batch redraws to avoid jank while still letting labels appear progressively.
+        if (updatesSinceLastSetState >= 6) {
+          setState(() {});
+          updatesSinceLastSetState = 0;
+        }
+      }
+    }
+
+    if (!mounted) return;
+    if (anyUpdates && updatesSinceLastSetState > 0) {
+      setState(() {});
+    }
+  }
+
+  Future<bool> _ensureLocationLabel({
+    required String? listingId,
+    required Map<String, dynamic> listing,
+    required String locationKey,
+  }) async {
+    final loc = _asStringMap(listing[locationKey]);
+    if (loc == null) return false;
+
+    final existing = (loc['display'] ?? loc['address'])?.toString() ?? '';
+    if (existing.trim().isNotEmpty) return false;
+
+    final lat = (loc['lat'] as num?)?.toDouble();
+    final lng = (loc['lng'] as num?)?.toDouble();
+    if (lat == null || lng == null) return false;
+
+    final persisted = await LocationLabelCache.getLabel(lat: lat, lng: lng);
+    if (persisted != null && persisted.trim().isNotEmpty) {
+      loc['display'] = persisted;
+      loc['address'] = persisted;
+      listing[locationKey] = loc;
+      return true;
+    }
+
+    final key = '${listingId ?? ''}|$locationKey|${lat.toStringAsFixed(6)},${lng.toStringAsFixed(6)}';
+    final cached = _locationLabelCache[key];
+    if (cached != null && cached.trim().isNotEmpty) {
+      loc['display'] = cached;
+      loc['address'] = cached;
+      listing[locationKey] = loc;
+      return true;
+    }
+
+    if (_locationLabelInFlight.contains(key)) return false;
+    _locationLabelInFlight.add(key);
+    try {
+      final parts = await _places.reverseGeocodeParts(position: LatLng(lat, lng));
+      final label = parts?.toDisplayString();
+      if (!mounted) return false;
+      if (label == null || label.trim().isEmpty) return false;
+
+      // Persist across restarts.
+      // ignore: unawaited_futures
+      LocationLabelCache.setLabel(lat: lat, lng: lng, label: label);
+
+      _locationLabelCache[key] = label;
+      loc['display'] = label;
+      loc['address'] = label;
+      listing[locationKey] = loc;
+
+      return true;
+    } catch (_) {
+      // ignore
+    } finally {
+      _locationLabelInFlight.remove(key);
+    }
+
+    return false;
   }
 
   void _maybeAutoOpenOffers() {
@@ -166,16 +327,26 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
     if (_offerBadgeListingIds.remove(listingId)) {
       if (mounted) setState(() {});
     }
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (context) {
-        return _OffersForListingSheet(listingId: listingId, title: title);
-      },
+    final transitionController = AnimationController(
+      vsync: this,
+      duration: Duration.zero,
+      reverseDuration: Duration.zero,
     );
+    try {
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        transitionAnimationController: transitionController,
+        builder: (context) {
+          return _OffersForListingSheet(listingId: listingId, title: title);
+        },
+      );
+    } finally {
+      transitionController.dispose();
+    }
   }
 
   void _syncOfferSubscriptions(List<dynamic> listingsData) {
@@ -264,7 +435,7 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
                       },
                 icon: Icon(
                   selected ? Icons.star : Icons.star_border,
-                  color: TrustShipColors.warningOrange,
+                  color: BiTasiColors.warningOrange,
                 ),
               );
             }
@@ -310,7 +481,7 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
                 ),
                 ElevatedButton(
                   onPressed: submitting ? null : submit,
-                  style: ElevatedButton.styleFrom(backgroundColor: TrustShipColors.primaryRed),
+                  style: ElevatedButton.styleFrom(backgroundColor: BiTasiColors.primaryRed),
                   child: submitting
                       ? const SizedBox(
                           width: 18,
@@ -357,20 +528,19 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
           final pickup = listing['pickup_location']?['address']?.toString() ?? '–';
           final dropoff = listing['dropoff_location']?['address']?.toString() ?? '–';
           final title = listing['title']?.toString() ?? 'İlan ${delivery['listingId'] ?? delivery['id'] ?? ''}';
-          final status = delivery['status']?.toString() ?? 'unknown';
+          final status = delivery['status']?.toString().toLowerCase() ?? 'unknown';
           final trackingEnabled = delivery['trackingEnabled'] == true;
           final amount = listing['weight']?.toString() ?? '-';
           final chip = _buildStatusChip(status);
 
           final steps = [
-            _TimelineStep('pickup_pending', 'Alım bekleniyor'),
-            _TimelineStep('in_transit', 'Yolda'),
-            _TimelineStep('delivered', 'Teslim edildi'),
+            _TimelineStep(DeliveryStatus.pickupPending, 'Alım bekleniyor'),
+            _TimelineStep(DeliveryStatus.inTransit, 'Yolda'),
+            _TimelineStep(DeliveryStatus.delivered, 'Teslim edildi'),
           ];
 
           return Card(
-            // ignore: deprecated_member_use
-            color: Colors.white.withOpacity(0.95),
+            color: Colors.white.withAlpha(242),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -398,13 +568,13 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
                   Wrap(
                     spacing: 8,
                     children: [
-                      if (status == 'pickup_pending' && pickupQrToken.isNotEmpty)
+                      if (status == DeliveryStatus.pickupPending && pickupQrToken.isNotEmpty)
                         ElevatedButton(
                           onPressed: () => _showPickupQr(context, pickupQrToken),
-                          style: ElevatedButton.styleFrom(backgroundColor: TrustShipColors.primaryBlue),
+                          style: ElevatedButton.styleFrom(backgroundColor: BiTasiColors.primaryBlue),
                           child: const Text('QR Göster'),
                         ),
-                      if ((trackingEnabled || status == 'in_transit') && deliveryId.isNotEmpty)
+                      if ((trackingEnabled || status == DeliveryStatus.inTransit) && deliveryId.isNotEmpty)
                         ElevatedButton(
                           onPressed: () {
                             Navigator.of(context).push(
@@ -413,15 +583,15 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
                               ),
                             );
                           },
-                          style: ElevatedButton.styleFrom(backgroundColor: TrustShipColors.primaryRed),
+                          style: ElevatedButton.styleFrom(backgroundColor: BiTasiColors.primaryRed),
                           child: const Text('Canlı Takip'),
                         ),
-                      if (status == 'delivered' && deliveryId.isNotEmpty)
+                      if (status == DeliveryStatus.delivered && deliveryId.isNotEmpty)
                         ElevatedButton(
                           onPressed: _ratedDeliveryIds.contains(deliveryId)
                               ? null
                               : () => _showRatingDialog(deliveryId: deliveryId, title: title),
-                          style: ElevatedButton.styleFrom(backgroundColor: TrustShipColors.successGreen),
+                          style: ElevatedButton.styleFrom(backgroundColor: BiTasiColors.successGreen),
                           child: Text(_ratedDeliveryIds.contains(deliveryId) ? 'Puanlandı' : 'Puan Ver'),
                         ),
                       ElevatedButton(
@@ -429,7 +599,7 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
                           const SnackBar(content: Text('Gönderi detayları yakında eklenecek')),
                         ),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: TrustShipColors.backgroundGrey,
+                          backgroundColor: BiTasiColors.backgroundGrey,
                         ),
                         child: const Text('Gönderi Detayı'),
                       ),
@@ -452,8 +622,7 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
           final chip = _buildStatusChip(status);
 
           return Card(
-            // ignore: deprecated_member_use
-            color: Colors.white.withOpacity(0.95),
+            color: Colors.white.withAlpha(242),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -474,7 +643,7 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
                           height: 10,
                           margin: const EdgeInsets.only(right: 8),
                           decoration: const BoxDecoration(
-                            color: TrustShipColors.primaryRed,
+                            color: BiTasiColors.primaryRed,
                             shape: BoxShape.circle,
                           ),
                         ),
@@ -492,7 +661,7 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
                       ElevatedButton(
                         onPressed: () => _openOffersForListing(listingId, title),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: TrustShipColors.primaryBlue,
+                          backgroundColor: BiTasiColors.primaryBlue,
                         ),
                         child: const Text('Teklifleri Gör'),
                       ),
@@ -510,30 +679,73 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
   void _showPickupQr(BuildContext context, String token) {
     showDialog<void>(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Teslimat QR Kodu'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            QrImageView(
-              data: token,
-              size: 220,
-              backgroundColor: Colors.white,
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              'Kurye teslimatı almak için bu QR kodu okutmalıdır.',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Kapat'),
+      builder: (_) {
+        // NOTE: AlertDialog uses IntrinsicWidth/IntrinsicHeight which can trigger
+        // intrinsic measurement on children. qr_flutter internally uses LayoutBuilder,
+        // which throws during intrinsic sizing. A sized Dialog avoids that path.
+        final painter = QrPainter(
+          data: token,
+          version: QrVersions.auto,
+          gapless: true,
+          eyeStyle: const QrEyeStyle(
+            eyeShape: QrEyeShape.square,
+            color: Colors.black,
           ),
-        ],
-      ),
+          dataModuleStyle: const QrDataModuleStyle(
+            dataModuleShape: QrDataModuleShape.square,
+            color: Colors.black,
+          ),
+        );
+
+        return Dialog(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 340),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Teslimat QR Kodu',
+                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Container(
+                    width: 220,
+                    height: 220,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: CustomPaint(
+                      painter: painter,
+                      size: const Size.square(200),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Kurye teslimatı almak için bu QR kodu okutmalıdır.',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 10),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Kapat'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -542,7 +754,7 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
     String label;
     switch (status) {
       case 'active':
-        color = TrustShipColors.primaryBlue;
+        color = BiTasiColors.primaryBlue;
         label = 'Aktif';
         break;
       default:
@@ -552,8 +764,7 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        // ignore: deprecated_member_use
-        color: color.withOpacity(0.15),
+        color: color.withAlpha(38),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
@@ -569,7 +780,7 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
       children: steps.map((step) {
         final isDone = _isStepDone(status, step.key);
         final isCurrent = status == step.key;
-        final color = isDone ? TrustShipColors.successGreen : (isCurrent ? TrustShipColors.primaryBlue : Colors.grey);
+        final color = isDone ? BiTasiColors.successGreen : (isCurrent ? BiTasiColors.primaryBlue : Colors.grey);
         return Row(
           children: [
             Container(
@@ -596,7 +807,11 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
   }
 
   bool _isStepDone(String status, String key) {
-    final order = ['pickup_pending', 'in_transit', 'delivered'];
+    final order = [
+      DeliveryStatus.pickupPending,
+      DeliveryStatus.inTransit,
+      DeliveryStatus.delivered,
+    ];
     final currentIndex = order.indexOf(status);
     final stepIndex = order.indexOf(key);
     if (currentIndex == -1 || stepIndex == -1) return false;
@@ -760,15 +975,15 @@ class _OffersForListingSheetState extends State<_OffersForListingSheet> {
                   String statusText;
                   switch (status) {
                     case 'accepted':
-                      statusColor = TrustShipColors.successGreen;
+                      statusColor = BiTasiColors.successGreen;
                       statusText = 'Kabul edildi';
                       break;
                     case 'rejected':
-                      statusColor = TrustShipColors.errorRed;
+                      statusColor = BiTasiColors.errorRed;
                       statusText = 'Reddedildi';
                       break;
                     default:
-                      statusColor = TrustShipColors.warningOrange;
+                      statusColor = BiTasiColors.warningOrange;
                       statusText = 'Bekliyor';
                   }
 
@@ -789,8 +1004,7 @@ class _OffersForListingSheetState extends State<_OffersForListingSheet> {
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                               decoration: BoxDecoration(
-                                // ignore: deprecated_member_use
-                                color: statusColor.withOpacity(0.1),
+                                color: statusColor.withAlpha(26),
                                 borderRadius: BorderRadius.circular(999),
                               ),
                               child: Text(
@@ -810,11 +1024,11 @@ class _OffersForListingSheetState extends State<_OffersForListingSheet> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 IconButton(
-                                  icon: const Icon(Icons.close, color: TrustShipColors.errorRed),
+                                  icon: const Icon(Icons.close, color: BiTasiColors.errorRed),
                                   onPressed: () => _updateOffer(id, false),
                                 ),
                                 IconButton(
-                                  icon: const Icon(Icons.check, color: TrustShipColors.successGreen),
+                                  icon: const Icon(Icons.check, color: BiTasiColors.successGreen),
                                   onPressed: () => _updateOffer(id, true),
                                 ),
                               ],
