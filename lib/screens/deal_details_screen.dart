@@ -403,9 +403,14 @@ class _DealDetailsScreenState extends State<DealDetailsScreen> {
       await _load();
     } catch (e) {
       if (!mounted) return;
+      final raw = e.toString();
+      final msg = raw.contains('zaten kabul edilmiş')
+          ? 'Bu ilan için teklif kabul edilmiş. Artık teklif verilemez.'
+          : raw;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Teklif gönderilemedi: $e')),
+        SnackBar(content: Text('Teklif gönderilemedi: $msg')),
       );
+      await _load();
     }
   }
 }

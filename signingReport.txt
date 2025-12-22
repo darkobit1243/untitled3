@@ -1,0 +1,219 @@
+Picked up JAVA_TOOL_OPTIONS: -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::load has been called by net.rubygrapefruit.platform.internal.NativeLibraryLoader in an unnamed module (file:/C:/Users/efeta/.gradle/wrapper/dists/gradle-8.12-all/ejduaidbjup3bmmkhw3rie4zb/gradle-8.12/lib/native-platform-0.22-milestone-27.jar)
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.12/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :gradle:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :gradle:compileKotlin UP-TO-DATE
+> Task :gradle:compileJava NO-SOURCE
+> Task :gradle:compileGroovy NO-SOURCE
+> Task :gradle:pluginDescriptors UP-TO-DATE
+> Task :gradle:processResources UP-TO-DATE
+> Task :gradle:classes UP-TO-DATE
+> Task :gradle:jar UP-TO-DATE
+
+> Task :app:signingReport
+Variant: debug
+Config: debug
+Store: C:\Users\efeta\.android\debug.keystore
+Alias: AndroidDebugKey
+MD5: 9F:79:CD:4F:2D:CB:A7:03:89:9A:FD:8C:41:47:7C:08
+SHA1: 27:46:96:92:31:DC:BC:FD:C3:E0:93:C3:DA:28:5B:06:8C:02:A8:36
+SHA-256: 04:E2:6D:1D:15:2F:60:20:71:07:8A:34:E3:1A:18:1B:07:A8:71:BC:0B:77:AC:FD:B6:A5:09:CD:D6:4C:26:4E
+Valid until: 26 Kasım 2055 Cuma
+----------
+Variant: release
+Config: debug
+Store: C:\Users\efeta\.android\debug.keystore
+Alias: AndroidDebugKey
+MD5: 9F:79:CD:4F:2D:CB:A7:03:89:9A:FD:8C:41:47:7C:08
+SHA1: 27:46:96:92:31:DC:BC:FD:C3:E0:93:C3:DA:28:5B:06:8C:02:A8:36
+SHA-256: 04:E2:6D:1D:15:2F:60:20:71:07:8A:34:E3:1A:18:1B:07:A8:71:BC:0B:77:AC:FD:B6:A5:09:CD:D6:4C:26:4E
+Valid until: 26 Kasım 2055 Cuma
+----------
+Variant: profile
+Config: debug
+Store: C:\Users\efeta\.android\debug.keystore
+Alias: AndroidDebugKey
+MD5: 9F:79:CD:4F:2D:CB:A7:03:89:9A:FD:8C:41:47:7C:08
+SHA1: 27:46:96:92:31:DC:BC:FD:C3:E0:93:C3:DA:28:5B:06:8C:02:A8:36
+SHA-256: 04:E2:6D:1D:15:2F:60:20:71:07:8A:34:E3:1A:18:1B:07:A8:71:BC:0B:77:AC:FD:B6:A5:09:CD:D6:4C:26:4E
+Valid until: 26 Kasım 2055 Cuma
+----------
+Variant: debugAndroidTest
+Config: debug
+Store: C:\Users\efeta\.android\debug.keystore
+Alias: AndroidDebugKey
+MD5: 9F:79:CD:4F:2D:CB:A7:03:89:9A:FD:8C:41:47:7C:08
+SHA1: 27:46:96:92:31:DC:BC:FD:C3:E0:93:C3:DA:28:5B:06:8C:02:A8:36
+SHA-256: 04:E2:6D:1D:15:2F:60:20:71:07:8A:34:E3:1A:18:1B:07:A8:71:BC:0B:77:AC:FD:B6:A5:09:CD:D6:4C:26:4E
+Valid until: 26 Kasım 2055 Cuma
+----------
+
+> Task :camera_android:signingReport
+Variant: debugAndroidTest
+Config: debug
+Store: C:\Users\efeta\.android\debug.keystore
+Alias: AndroidDebugKey
+MD5: 9F:79:CD:4F:2D:CB:A7:03:89:9A:FD:8C:41:47:7C:08
+SHA1: 27:46:96:92:31:DC:BC:FD:C3:E0:93:C3:DA:28:5B:06:8C:02:A8:36
+SHA-256: 04:E2:6D:1D:15:2F:60:20:71:07:8A:34:E3:1A:18:1B:07:A8:71:BC:0B:77:AC:FD:B6:A5:09:CD:D6:4C:26:4E
+Valid until: 26 Kasım 2055 Cuma
+----------
+
+> Task :cloud_firestore:signingReport
+Variant: debugAndroidTest
+Config: debug
+Store: C:\Users\efeta\.android\debug.keystore
+Alias: AndroidDebugKey
+MD5: 9F:79:CD:4F:2D:CB:A7:03:89:9A:FD:8C:41:47:7C:08
+SHA1: 27:46:96:92:31:DC:BC:FD:C3:E0:93:C3:DA:28:5B:06:8C:02:A8:36
+SHA-256: 04:E2:6D:1D:15:2F:60:20:71:07:8A:34:E3:1A:18:1B:07:A8:71:BC:0B:77:AC:FD:B6:A5:09:CD:D6:4C:26:4E
+Valid until: 26 Kasım 2055 Cuma
+----------
+
+> Task :firebase_auth:signingReport
+Variant: debugAndroidTest
+Config: debug
+Store: C:\Users\efeta\.android\debug.keystore
+Alias: AndroidDebugKey
+MD5: 9F:79:CD:4F:2D:CB:A7:03:89:9A:FD:8C:41:47:7C:08
+SHA1: 27:46:96:92:31:DC:BC:FD:C3:E0:93:C3:DA:28:5B:06:8C:02:A8:36
+SHA-256: 04:E2:6D:1D:15:2F:60:20:71:07:8A:34:E3:1A:18:1B:07:A8:71:BC:0B:77:AC:FD:B6:A5:09:CD:D6:4C:26:4E
+Valid until: 26 Kasım 2055 Cuma
+----------
+
+> Task :firebase_core:signingReport
+Variant: debugAndroidTest
+Config: debug
+Store: C:\Users\efeta\.android\debug.keystore
+Alias: AndroidDebugKey
+MD5: 9F:79:CD:4F:2D:CB:A7:03:89:9A:FD:8C:41:47:7C:08
+SHA1: 27:46:96:92:31:DC:BC:FD:C3:E0:93:C3:DA:28:5B:06:8C:02:A8:36
+SHA-256: 04:E2:6D:1D:15:2F:60:20:71:07:8A:34:E3:1A:18:1B:07:A8:71:BC:0B:77:AC:FD:B6:A5:09:CD:D6:4C:26:4E
+Valid until: 26 Kasım 2055 Cuma
+----------
+
+> Task :firebase_messaging:signingReport
+Variant: debugAndroidTest
+Config: debug
+Store: C:\Users\efeta\.android\debug.keystore
+Alias: AndroidDebugKey
+MD5: 9F:79:CD:4F:2D:CB:A7:03:89:9A:FD:8C:41:47:7C:08
+SHA1: 27:46:96:92:31:DC:BC:FD:C3:E0:93:C3:DA:28:5B:06:8C:02:A8:36
+SHA-256: 04:E2:6D:1D:15:2F:60:20:71:07:8A:34:E3:1A:18:1B:07:A8:71:BC:0B:77:AC:FD:B6:A5:09:CD:D6:4C:26:4E
+Valid until: 26 Kasım 2055 Cuma
+----------
+
+> Task :firebase_storage:signingReport
+Variant: debugAndroidTest
+Config: debug
+Store: C:\Users\efeta\.android\debug.keystore
+Alias: AndroidDebugKey
+MD5: 9F:79:CD:4F:2D:CB:A7:03:89:9A:FD:8C:41:47:7C:08
+SHA1: 27:46:96:92:31:DC:BC:FD:C3:E0:93:C3:DA:28:5B:06:8C:02:A8:36
+SHA-256: 04:E2:6D:1D:15:2F:60:20:71:07:8A:34:E3:1A:18:1B:07:A8:71:BC:0B:77:AC:FD:B6:A5:09:CD:D6:4C:26:4E
+Valid until: 26 Kasım 2055 Cuma
+----------
+
+> Task :flutter_google_places_sdk_android:signingReport
+Variant: debugAndroidTest
+Config: debug
+Store: C:\Users\efeta\.android\debug.keystore
+Alias: AndroidDebugKey
+MD5: 9F:79:CD:4F:2D:CB:A7:03:89:9A:FD:8C:41:47:7C:08
+SHA1: 27:46:96:92:31:DC:BC:FD:C3:E0:93:C3:DA:28:5B:06:8C:02:A8:36
+SHA-256: 04:E2:6D:1D:15:2F:60:20:71:07:8A:34:E3:1A:18:1B:07:A8:71:BC:0B:77:AC:FD:B6:A5:09:CD:D6:4C:26:4E
+Valid until: 26 Kasım 2055 Cuma
+----------
+
+> Task :flutter_plugin_android_lifecycle:signingReport
+Variant: debugAndroidTest
+Config: debug
+Store: C:\Users\efeta\.android\debug.keystore
+Alias: AndroidDebugKey
+MD5: 9F:79:CD:4F:2D:CB:A7:03:89:9A:FD:8C:41:47:7C:08
+SHA1: 27:46:96:92:31:DC:BC:FD:C3:E0:93:C3:DA:28:5B:06:8C:02:A8:36
+SHA-256: 04:E2:6D:1D:15:2F:60:20:71:07:8A:34:E3:1A:18:1B:07:A8:71:BC:0B:77:AC:FD:B6:A5:09:CD:D6:4C:26:4E
+Valid until: 26 Kasım 2055 Cuma
+----------
+
+> Task :geolocator_android:signingReport
+Variant: debugAndroidTest
+Config: debug
+Store: C:\Users\efeta\.android\debug.keystore
+Alias: AndroidDebugKey
+MD5: 9F:79:CD:4F:2D:CB:A7:03:89:9A:FD:8C:41:47:7C:08
+SHA1: 27:46:96:92:31:DC:BC:FD:C3:E0:93:C3:DA:28:5B:06:8C:02:A8:36
+SHA-256: 04:E2:6D:1D:15:2F:60:20:71:07:8A:34:E3:1A:18:1B:07:A8:71:BC:0B:77:AC:FD:B6:A5:09:CD:D6:4C:26:4E
+Valid until: 26 Kasım 2055 Cuma
+----------
+
+> Task :google_maps_flutter_android:signingReport
+Variant: debugAndroidTest
+Config: debug
+Store: C:\Users\efeta\.android\debug.keystore
+Alias: AndroidDebugKey
+MD5: 9F:79:CD:4F:2D:CB:A7:03:89:9A:FD:8C:41:47:7C:08
+SHA1: 27:46:96:92:31:DC:BC:FD:C3:E0:93:C3:DA:28:5B:06:8C:02:A8:36
+SHA-256: 04:E2:6D:1D:15:2F:60:20:71:07:8A:34:E3:1A:18:1B:07:A8:71:BC:0B:77:AC:FD:B6:A5:09:CD:D6:4C:26:4E
+Valid until: 26 Kasım 2055 Cuma
+----------
+
+> Task :image_picker_android:signingReport
+Variant: debugAndroidTest
+Config: debug
+Store: C:\Users\efeta\.android\debug.keystore
+Alias: AndroidDebugKey
+MD5: 9F:79:CD:4F:2D:CB:A7:03:89:9A:FD:8C:41:47:7C:08
+SHA1: 27:46:96:92:31:DC:BC:FD:C3:E0:93:C3:DA:28:5B:06:8C:02:A8:36
+SHA-256: 04:E2:6D:1D:15:2F:60:20:71:07:8A:34:E3:1A:18:1B:07:A8:71:BC:0B:77:AC:FD:B6:A5:09:CD:D6:4C:26:4E
+Valid until: 26 Kasım 2055 Cuma
+----------
+
+> Task :mobile_scanner:signingReport
+Variant: debugAndroidTest
+Config: debug
+Store: C:\Users\efeta\.android\debug.keystore
+Alias: AndroidDebugKey
+MD5: 9F:79:CD:4F:2D:CB:A7:03:89:9A:FD:8C:41:47:7C:08
+SHA1: 27:46:96:92:31:DC:BC:FD:C3:E0:93:C3:DA:28:5B:06:8C:02:A8:36
+SHA-256: 04:E2:6D:1D:15:2F:60:20:71:07:8A:34:E3:1A:18:1B:07:A8:71:BC:0B:77:AC:FD:B6:A5:09:CD:D6:4C:26:4E
+Valid until: 26 Kasım 2055 Cuma
+----------
+
+> Task :shared_preferences_android:signingReport
+Variant: debugAndroidTest
+Config: debug
+Store: C:\Users\efeta\.android\debug.keystore
+Alias: AndroidDebugKey
+MD5: 9F:79:CD:4F:2D:CB:A7:03:89:9A:FD:8C:41:47:7C:08
+SHA1: 27:46:96:92:31:DC:BC:FD:C3:E0:93:C3:DA:28:5B:06:8C:02:A8:36
+SHA-256: 04:E2:6D:1D:15:2F:60:20:71:07:8A:34:E3:1A:18:1B:07:A8:71:BC:0B:77:AC:FD:B6:A5:09:CD:D6:4C:26:4E
+Valid until: 26 Kasım 2055 Cuma
+----------
+
+> Task :url_launcher_android:signingReport
+Variant: debugAndroidTest
+Config: debug
+Store: C:\Users\efeta\.android\debug.keystore
+Alias: AndroidDebugKey
+MD5: 9F:79:CD:4F:2D:CB:A7:03:89:9A:FD:8C:41:47:7C:08
+SHA1: 27:46:96:92:31:DC:BC:FD:C3:E0:93:C3:DA:28:5B:06:8C:02:A8:36
+SHA-256: 04:E2:6D:1D:15:2F:60:20:71:07:8A:34:E3:1A:18:1B:07:A8:71:BC:0B:77:AC:FD:B6:A5:09:CD:D6:4C:26:4E
+Valid until: 26 Kasım 2055 Cuma
+----------
+
+[Incubating] Problems report is available at: file:///C:/Users/efeta/StudioProjects/untitled3/build/reports/problems/problems-report.html
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.12/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD SUCCESSFUL in 22s
+19 actionable tasks: 15 executed, 4 up-to-date

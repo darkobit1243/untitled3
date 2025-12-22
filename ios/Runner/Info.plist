@@ -26,6 +26,14 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>QR kod okutmak için kamera erişimi gerekiyor.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Teslimat sürecinde konumunu haritada göstermek için konum izni gerekiyor.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Teslimat alındıktan sonra arka planda da canlı takip için konum izni gerekiyor.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
@@ -45,6 +53,8 @@
 	</array>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<key>GMSApiKey</key>
+	<string>$(GOOGLE_MAPS_IOS_API_KEY)</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 </dict>

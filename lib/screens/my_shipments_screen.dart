@@ -68,48 +68,81 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
       final deliveriesData = results[1] is List ? List<dynamic>.from(results[1] as List) : <dynamic>[];
       final mineRatings = results[2] is List ? List<dynamic>.from(results[2] as List) : <dynamic>[];
 
-      // Only hide listings from the active list if the related delivery is delivered.
-      // For pickup pending / in transit we keep the listing in active, as requested.
-      final deliveredListingIds = <String>{};
-      for (final d in deliveriesData) {
-        if (d is! Map) continue;
-        final status = d['status']?.toString().toLowerCase() ?? '';
-        if (status != DeliveryStatus.delivered) continue;
+      final listingById = <String, Map<String, dynamic>>{};
+      for (final l in listingsData) {
+        final lm = _asStringMap(l);
+        final id = lm?['id']?.toString() ?? '';
+        if (id.isEmpty || lm == null) continue;
+        listingById[id] = lm;
+      }
 
-        final listingId = d['listingId']?.toString() ?? (d['listing'] is Map ? (d['listing'] as Map)['id']?.toString() : null);
-        if (listingId != null && listingId.isNotEmpty) {
-          deliveredListingIds.add(listingId);
-        }
+      // If a listing has an associated delivery (accepted offer), we should not render it
+      // as a separate "listing" row; instead render a single delivery card that updates
+      // status/timeline to avoid duplicate entries.
+      final deliveryByListingId = <String, Map<String, dynamic>>{};
+      for (final d in deliveriesData) {
+        final dm = _asStringMap(d);
+        if (dm == null) continue;
+        final listingId = dm['listingId']?.toString() ?? _asStringMap(dm['listing'])?['id']?.toString() ?? '';
+        if (listingId.isEmpty) continue;
+
+        // Some backend endpoints may not include embedded listing; attach it from my listings.
+        dm['listing'] ??= listingById[listingId];
+
+        deliveryByListingId.putIfAbsent(listingId, () => dm);
       }
 
       final active = <dynamic>[];
       final history = <dynamic>[];
 
-      // Add listings
+      final consumedDeliveryListingIds = <String>{};
+
+      // Add listings (or their merged delivery card if accepted)
       for (final listing in listingsData) {
-        if (listing is Map) {
-          final listingId = listing['id']?.toString() ?? '';
-          if (listingId.isNotEmpty && deliveredListingIds.contains(listingId)) {
-            // Delivered shipments should not appear under active listings.
+        final listingMap = _asStringMap(listing);
+        final listingId = listingMap?['id']?.toString() ?? '';
+
+        if (listingId.isNotEmpty) {
+          final delivery = deliveryByListingId[listingId];
+          if (delivery != null) {
+            final status = delivery['status']?.toString().toLowerCase() ?? '';
+            if (status == DeliveryStatus.inTransit || status == DeliveryStatus.pickupPending || status == DeliveryStatus.atDoor) {
+              active.add({'type': 'delivery', 'data': delivery});
+            } else {
+              history.add({'type': 'delivery', 'data': delivery});
+            }
+            consumedDeliveryListingIds.add(listingId);
             continue;
           }
         }
+
+        // No accepted delivery yet -> keep as a normal listing row.
         active.add({'type': 'listing', 'data': listing});
       }
 
       _syncOfferSubscriptions(listingsData);
 
-      // Add accepted deliveries (these are accepted offers)
+      // Add deliveries that are not linked to any fetched listing (edge-case) to avoid losing them.
       for (final delivery in deliveriesData) {
-        if (delivery is! Map) {
+        final dm = _asStringMap(delivery);
+        if (dm == null) {
           history.add({'type': 'delivery', 'data': delivery});
           continue;
         }
-        final status = delivery['status']?.toString().toLowerCase() ?? '';
-        if (status == DeliveryStatus.inTransit || status == DeliveryStatus.pickupPending) {
-          active.add({'type': 'delivery', 'data': delivery});
+        final listingId = dm['listingId']?.toString() ?? _asStringMap(dm['listing'])?['id']?.toString() ?? '';
+
+        if (listingId.isNotEmpty) {
+          dm['listing'] ??= listingById[listingId];
+        }
+
+        if (listingId.isNotEmpty && consumedDeliveryListingIds.contains(listingId)) {
+          continue;
+        }
+        final status = dm['status']?.toString().toLowerCase() ?? '';
+        if (status == DeliveryStatus.inTransit || status == DeliveryStatus.pickupPending || status == DeliveryStatus.atDoor) {
+          active.add({'type': 'delivery', 'data': dm});
         } else {
-          history.add({'type': 'delivery', 'data': delivery});
+          history.add({'type': 'delivery', 'data': dm});
         }
       }
 
@@ -282,12 +315,22 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
       String? title;
       for (final item in all) {
         if (item is! Map<String, dynamic>) continue;
-        if (item['type'] != 'listing') continue;
+        final type = item['type']?.toString();
         final data = item['data'] as Map<String, dynamic>;
-        final id = data['id']?.toString();
-        if (id == targetId) {
-          title = data['title']?.toString() ?? 'Gönderi';
-          break;
+
+        if (type == 'listing') {
+          final id = data['id']?.toString();
+          if (id == targetId) {
+            title = data['title']?.toString() ?? 'Gönderi';
+            break;
+          }
+        } else if (type == 'delivery') {
+          final listing = _asStringMap(data['listing']);
+          final id = data['listingId']?.toString() ?? listing?['id']?.toString();
+          if (id == targetId) {
+            title = listing?['title']?.toString() ?? 'Gönderi';
+            break;
+          }
         }
       }
       _openOffersForListing(targetId, title ?? 'Gönderi');
@@ -383,7 +426,6 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
   }
 
   Future<void> _showRatingDialog({required String deliveryId, required String title}) async {
-    final commentController = TextEditingController();
     int score = 5;
     bool submitting = false;
     String? error;
@@ -405,7 +447,6 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
                 await apiClient.createRating(
                   deliveryId: deliveryId,
                   score: score,
-                  comment: commentController.text,
                 );
                 if (!dialogContext.mounted) return;
                 Navigator.of(dialogContext).pop();
@@ -454,16 +495,6 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [star(1), star(2), star(3), star(4), star(5)],
                     ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: commentController,
-                      enabled: !submitting,
-                      maxLines: 3,
-                      decoration: const InputDecoration(
-                        hintText: 'Yorum (opsiyonel)',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
                     if (error != null) ...[
                       const SizedBox(height: 10),
                       Text(
@@ -496,8 +527,6 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
         );
       },
     );
-
-    commentController.dispose();
   }
 
   Widget _buildTaskList(List<dynamic> items, bool isActive) {
@@ -523,6 +552,8 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
           // Handle delivery items (accepted offers)
           final delivery = data;
           final listing = delivery['listing'] as Map<String, dynamic>? ?? {};
+          final carrier = delivery['carrier'] as Map<String, dynamic>?;
+          final acceptedOffer = delivery['acceptedOffer'] as Map<String, dynamic>?;
           final deliveryId = delivery['id']?.toString() ?? '';
           final pickupQrToken = delivery['pickupQrToken']?.toString() ?? '';
           final pickup = listing['pickup_location']?['address']?.toString() ?? '–';
@@ -531,6 +562,12 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
           final status = delivery['status']?.toString().toLowerCase() ?? 'unknown';
           final trackingEnabled = delivery['trackingEnabled'] == true;
           final amount = listing['weight']?.toString() ?? '-';
+            final carrierFullName = carrier?['fullName']?.toString().trim();
+            final carrierEmail = carrier?['email']?.toString().trim();
+            final carrierName = (carrierFullName != null && carrierFullName.isNotEmpty)
+              ? carrierFullName
+              : ((carrierEmail != null && carrierEmail.isNotEmpty) ? carrierEmail : null);
+          final acceptedAmount = (acceptedOffer?['amount'] as num?)?.toDouble();
           final chip = _buildStatusChip(status);
 
           final steps = [
@@ -562,6 +599,14 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
                   Text('Kalkış: $pickup • Varış: $dropoff', style: const TextStyle(color: Colors.grey)),
                   const SizedBox(height: 4),
                   Text('Ağırlık: $amount kg', style: const TextStyle(fontWeight: FontWeight.w600)),
+                  if ((carrierName ?? '').isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text('Taşıyıcı: $carrierName', style: const TextStyle(color: Colors.black87)),
+                  ],
+                  if (acceptedAmount != null && acceptedAmount > 0) ...[
+                    const SizedBox(height: 4),
+                    Text('Ücret: ${acceptedAmount.toStringAsFixed(0)} TL', style: const TextStyle(fontWeight: FontWeight.w600)),
+                  ],
                   const SizedBox(height: 12),
                   _buildTimeline(status, steps),
                   const SizedBox(height: 8),
@@ -574,7 +619,7 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
                           style: ElevatedButton.styleFrom(backgroundColor: BiTasiColors.primaryBlue),
                           child: const Text('QR Göster'),
                         ),
-                      if ((trackingEnabled || status == DeliveryStatus.inTransit) && deliveryId.isNotEmpty)
+                      if (trackingEnabled && deliveryId.isNotEmpty)
                         ElevatedButton(
                           onPressed: () {
                             Navigator.of(context).push(

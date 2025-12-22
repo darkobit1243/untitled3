@@ -1,14 +1,34 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'dart:ui';
 
 import 'screens/auth/login_screen.dart';
 import 'screens/main_wrapper.dart';
 import 'services/api_client.dart';
 import 'services/app_navigator.dart';
+import 'services/background_tracking_service.dart';
+import 'services/local_notifications.dart';
 import 'services/push_notifications.dart';
 import 'services/push_config.dart';
 import 'theme/bitasi_theme.dart';
+
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  WidgetsFlutterBinding.ensureInitialized();
+  DartPluginRegistrant.ensureInitialized();
+  try {
+    await Firebase.initializeApp();
+  } catch (_) {
+    // Ignore if Firebase config is missing.
+  }
+
+  try {
+    await localNotifications.showFromRemoteMessage(message);
+  } catch (_) {
+    // Ignore notification errors in background isolate.
+  }
+}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -32,6 +52,30 @@ Future<void> main() async {
   } catch (_) {
     // Firebase config may be missing in local/dev; app should still run.
   }
+  
+  // FCM token'ı alıp konsola yazdır
+  try {
+    String? token = await FirebaseMessaging.instance.getToken();
+    print('---------------------------------------');
+    print('BULDUM LAN TOKENI: $token');
+    print('---------------------------------------');
+  } catch (e) {
+    print('TOKEN ALIRKEN PATLADIK: $e');
+  }
+
+  if (kEnableFirebasePush) {
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  }
+
+  // Local notifications (welcome + data-only FCM display)
+  try {
+    await localNotifications.init();
+  } catch (_) {
+    // Ignore: local notifications may fail on unsupported platforms.
+  }
+
+  // Configure background tracking service (Android foreground service / iOS background hooks).
+  await BackgroundTrackingService.initialize();
   runApp(const BiTasiApp());
 }
 
@@ -71,7 +115,11 @@ class _RootDeciderState extends State<_RootDecider> {
   Future<void> _checkSession() async {
     final ok = await apiClient.tryRestoreSession();
     if (ok && kEnableFirebasePush) {
-      await pushNotifications.syncWithSettings();
+      try {
+        await pushNotifications.syncWithSettings();
+      } catch (_) {
+        // Push is best-effort; don't block app usage.
+      }
     }
     if (!mounted) return;
     setState(() {

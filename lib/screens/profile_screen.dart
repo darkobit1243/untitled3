@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
+import '../services/background_tracking_service.dart';
 import '../services/app_settings.dart';
 import '../theme/bitasi_theme.dart';
 import 'auth/login_screen.dart';
@@ -136,6 +137,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Center(
               child: ElevatedButton.icon(
                 onPressed: () async {
+                  await BackgroundTrackingService.stop();
                   await apiClient.clearToken();
                   if (!context.mounted) return;
                   Navigator.of(context).pushAndRemoveUntil(

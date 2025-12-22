@@ -121,10 +121,9 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
-  Future<void> _sendMessage() async {
-    final text = _controller.text.trim();
-    if (text.isEmpty) return;
-    _controller.clear();
+  Future<void> _sendText(String text) async {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return;
     try {
       final socketConnected = ChatSocketService.instance.connected;
       if (socketConnected) {
@@ -133,14 +132,14 @@ class _ChatScreenState extends State<ChatScreen> {
           listingId: widget.listingId,
           senderId: widget.senderId,
           carrierId: widget.carrierId,
-          content: text,
+          content: trimmed,
         );
         // socket yayını gelene kadar bekle; ekstra ekleme yok
       } else {
         // socket yoksa REST gönder
         await ChatApiService.instance.sendMessage(
           listingId: widget.listingId,
-          content: text,
+          content: trimmed,
           senderId: widget.senderId,
           carrierId: widget.carrierId,
         );
@@ -160,6 +159,17 @@ class _ChatScreenState extends State<ChatScreen> {
         SnackBar(content: Text('Gönderilemedi: $e')),
       );
     }
+  }
+
+  Future<void> _sendMessage() async {
+    final text = _controller.text.trim();
+    if (text.isEmpty) return;
+    _controller.clear();
+    await _sendText(text);
+  }
+
+  Future<void> _sendQuick(String text) async {
+    await _sendText(text);
   }
 
   @override
@@ -213,29 +223,57 @@ class _ChatScreenState extends State<ChatScreen> {
                   )
                 ],
               ),
-              child: Row(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _controller,
-                      decoration: InputDecoration(
-                        hintText: 'Mesaj yaz...',
-                        filled: true,
-                        fillColor: Colors.grey.shade100,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide.none,
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        TextButton(
+                          onPressed: () => _sendQuick('yoldayım'),
+                          child: const Text('yoldayım'),
                         ),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      ),
-                      minLines: 1,
-                      maxLines: 4,
+                        const SizedBox(width: 6),
+                        TextButton(
+                          onPressed: () => _sendQuick('10 dk gecikeceğim'),
+                          child: const Text('10 dk gecikeceğim'),
+                        ),
+                        const SizedBox(width: 6),
+                        TextButton(
+                          onPressed: () => _sendQuick('adrese geldim'),
+                          child: const Text('adrese geldim'),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    icon: const Icon(Icons.send, color: Colors.blue),
-                    onPressed: _sendMessage,
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _controller,
+                          decoration: InputDecoration(
+                            hintText: 'Mesaj yaz...',
+                            filled: true,
+                            fillColor: Colors.grey.shade100,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide.none,
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          ),
+                          minLines: 1,
+                          maxLines: 4,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        icon: const Icon(Icons.send, color: Colors.blue),
+                        onPressed: _sendMessage,
+                      ),
+                    ],
                   ),
                 ],
               ),

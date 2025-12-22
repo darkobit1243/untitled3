@@ -29,3 +29,11 @@ VS Code ile daha rahat kullanım (önerilen):
 - VS Code debug config `.vscode/launch.json` zaten `--dart-define-from-file=dart_defines.json` kullanır.
 
 Not: Key’i Google Cloud Console’da mümkün olduğunca kısıtlayın (API bazında ve uygulama/bundle bazında).
+
+## iOS: Google Maps SDK Key (Harita görünmüyor sorunu)
+
+iPhone/iPad’de haritanın görünmesi için iOS tarafında ayrıca Google Maps SDK key verilmesi gerekir.
+Bu repo içinde iOS native tarafı `Info.plist` üzerinden `GMSApiKey` okur.
+
+- `ios/Flutter/Debug.xcconfig` ve `ios/Flutter/Release.xcconfig` içinde `GOOGLE_MAPS_IOS_API_KEY` değerini set edin.
+- Google Cloud Console’da **Maps SDK for iOS** etkin olmalı ve key mümkünse iOS bundle id ile kısıtlanmalı.

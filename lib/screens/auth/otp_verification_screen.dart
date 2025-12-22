@@ -59,8 +59,15 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
         return 'Çok fazla deneme yapıldı. Lütfen biraz bekleyip tekrar deneyin.';
       case 'invalid-verification-id':
         return 'Doğrulama oturumu geçersiz. Tekrar kod isteyin.';
+      case 'captcha-check-failed':
+      case 'invalid-app-credential':
+      case 'app-not-authorized':
+      case 'missing-client-identifier':
+        return 'Uygulama doğrulanamadı (Play Integrity / reCAPTCHA).\n\nÇözüm: Firebase Console > Project settings > Android app (com.example.untitled) içine SHA-1 ve SHA-256 ekle, sonra yeni google-services.json indirip projeye koy. Google Cloud’da Play Integrity API açık olsun.\n\nDetay: ${e.code}: ${e.message ?? ''}'.trim();
       default:
-        return e.message ?? 'İşlem başarısız.';
+        final msg = (e.message ?? '').trim();
+        if (msg.isEmpty) return 'İşlem başarısız. (${e.code})';
+        return '${e.code}: $msg';
     }
   }
 

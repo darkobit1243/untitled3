@@ -13,7 +13,7 @@ import '../../theme/bitasi_theme.dart';
 import '../../widgets/Home_screen_widgets/home_screen_widgets.dart';
 import '../create_shipment_screen.dart';
 import '../home_common.dart';
-import '../teklif_listesi_sheet.dart';
+import 'teklif_listesi_sheet.dart';
 
 class SenderHomeScreen extends StatefulWidget {
   const SenderHomeScreen({super.key});
@@ -123,36 +123,6 @@ class _SenderHomeScreenState extends State<SenderHomeScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('İlanlar alınamadı, bağlantını kontrol et.')));
-    }
-  }
-
-  Future<void> _onMapTap(LatLng position) async {
-    setState(() {
-      final hasTap = _markers.any((m) => m.markerId.value == 'tap_place');
-      _markers.removeWhere((m) => m.markerId.value == 'tap_place');
-      if (!hasTap) {
-        _markers.add(Marker(
-          markerId: const MarkerId('tap_place'),
-          position: position,
-          icon: _currentLocationIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
-          onTap: () {
-            if (!mounted) return;
-            setState(() {
-              _markers.removeWhere((m) => m.markerId.value == 'tap_place');
-            });
-          },
-        ));
-      }
-      _polylines.clear();
-      _selectedAddress = null;
-    });
-    final address = await _reverseGeocode(position);
-    if (!mounted) return;
-    if (address != null) {
-      setState(() {
-        _selectedAddress = address;
-        _searchController.text = address;
-      });
     }
   }
 
@@ -334,7 +304,7 @@ class _SenderHomeScreenState extends State<SenderHomeScreen> {
   }
 
   Widget _buildSenderBody(BuildContext context) {
-    return Stack(children: [GoogleMap(initialCameraPosition: _initialPosition, markers: _markers, polylines: _polylines, zoomControlsEnabled: false, myLocationEnabled: false, myLocationButtonEnabled: false, onMapCreated: (controller) => _mapController = controller, onTap: _onMapTap), Positioned(top: 40, left: 20, right: 20, child: Column(children: [_buildSearchAndSummaryCard(context), if (_placePredictions.isNotEmpty) const SizedBox(height: 8), if (_placePredictions.isNotEmpty) _buildPredictionList()])), if (_selectedAddress != null) Positioned(bottom: 140, left: 20, right: 20, child: SelectedAddressChip(address: _selectedAddress!)), Positioned(bottom: 24, right: 16, child: FloatingActionButton(heroTag: 'sender_my_location_fab', onPressed: _goToCurrentLocation, backgroundColor: Colors.white, child: const Icon(Icons.my_location, color: BiTasiColors.primaryRed))),]);
+    return Stack(children: [GoogleMap(initialCameraPosition: _initialPosition, markers: _markers, polylines: _polylines, zoomControlsEnabled: false, myLocationEnabled: false, myLocationButtonEnabled: false, onMapCreated: (controller) => _mapController = controller), Positioned(top: 40, left: 20, right: 20, child: Column(children: [_buildSearchAndSummaryCard(context), if (_placePredictions.isNotEmpty) const SizedBox(height: 8), if (_placePredictions.isNotEmpty) _buildPredictionList()])), if (_selectedAddress != null) Positioned(bottom: 140, left: 20, right: 20, child: SelectedAddressChip(address: _selectedAddress!)), Positioned(bottom: 24, right: 16, child: FloatingActionButton(heroTag: 'sender_my_location_fab', onPressed: _goToCurrentLocation, backgroundColor: Colors.white, child: const Icon(Icons.my_location, color: BiTasiColors.primaryRed))),]);
   }
 
   Widget _buildSearchAndSummaryCard(BuildContext context) {
@@ -366,26 +336,6 @@ class _SenderHomeScreenState extends State<SenderHomeScreen> {
     await _mapController?.animateCamera(
       CameraUpdate.newCameraPosition(CameraPosition(target: target, zoom: 14)),
     );
-  }
-
-  Future<String?> _reverseGeocode(LatLng position) async {
-    final cached = await LocationLabelCache.getLabel(lat: position.latitude, lng: position.longitude);
-    if (cached != null && cached.trim().isNotEmpty) return cached;
-
-    final parts = await _places.reverseGeocodeParts(position: position);
-    final label = parts?.toDisplayString();
-    if (label != null && label.trim().isNotEmpty) {
-      // ignore: unawaited_futures
-      LocationLabelCache.setLabel(lat: position.latitude, lng: position.longitude, label: label);
-      return label;
-    }
-
-    final fallback = await _places.reverseGeocode(position: position);
-    if (fallback != null && fallback.trim().isNotEmpty) {
-      // ignore: unawaited_futures
-      LocationLabelCache.setLabel(lat: position.latitude, lng: position.longitude, label: fallback);
-    }
-    return fallback;
   }
 
   Widget _buildSenderFab() {

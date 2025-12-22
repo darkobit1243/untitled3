@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/api_client.dart';
 import '../../theme/bitasi_theme.dart';
-import '../teklif_listesi_sheet.dart';
+import 'teklif_listesi_sheet.dart';
 
 class SenderOffersScreen extends StatefulWidget {
   const SenderOffersScreen({super.key});

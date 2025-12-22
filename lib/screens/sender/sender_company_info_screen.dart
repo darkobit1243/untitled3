@@ -5,6 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../services/api_client.dart';
+import '../../services/app_settings.dart';
+import '../../services/local_notifications.dart';
+import '../../services/push_config.dart';
+import '../../services/push_notifications.dart';
 import '../../services/tr_location_assets.dart';
 import '../../theme/app_ui.dart';
 import '../../theme/bitasi_theme.dart';
@@ -250,11 +254,28 @@ class _SenderCompanyInfoScreenState extends State<SenderCompanyInfoScreen> {
       );
 
       if (!mounted) return;
+      final nav = Navigator.of(context);
       final fullName = (profile['fullName']?.toString().trim().isNotEmpty ?? false)
           ? profile['fullName'].toString().trim()
           : 'Kullanıcı';
 
-      final nav = Navigator.of(context);
+      // Side effects (push setup + welcome notification) should not block navigation.
+      // ignore: unawaited_futures
+      (() async {
+        if (kEnableFirebasePush) {
+          await pushNotifications.syncWithSettings();
+        }
+
+        try {
+          final enabled = await appSettings.getNotificationsEnabled();
+          if (enabled) {
+            await localNotifications.showWelcome(fullName: fullName);
+          }
+        } catch (_) {
+          // Ignore.
+        }
+      })();
+
       nav.pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const MainWrapper()),
         (route) => false,

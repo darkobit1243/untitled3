@@ -4,4 +4,4 @@
 /// - set this to true
 /// - add Firebase config (google-services.json etc.)
 /// - configure FIREBASE_SERVICE_ACCOUNT_JSON on backend if you want server pushes
-const bool kEnableFirebasePush = false;
+const bool kEnableFirebasePush = true;

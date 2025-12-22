@@ -127,27 +127,6 @@ class _CarrierHomeScreenState extends State<CarrierHomeScreen> with TickerProvid
     }
   }
 
-  Future<void> _onMapTap(LatLng position) async {
-    setState(() {
-      final hasTap = _markers.any((m) => m.markerId.value == 'tap_place');
-      _markers.removeWhere((m) => m.markerId.value == 'tap_place');
-      if (!hasTap) {
-        _markers.add(Marker(
-          markerId: const MarkerId('tap_place'),
-          position: position,
-          icon: _currentLocationIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
-          onTap: () {
-            if (!mounted) return;
-            setState(() {
-              _markers.removeWhere((m) => m.markerId.value == 'tap_place');
-            });
-          },
-        ));
-      }
-      _polylines.clear();
-    });
-  }
-
   void _onSearchChanged(String value) {
     _debounce?.cancel();
     if (value.isEmpty) {
@@ -277,6 +256,8 @@ class _CarrierHomeScreenState extends State<CarrierHomeScreen> with TickerProvid
   }
 
   Future<void> _showOfferDialog(String listingId, String title) async {
+    if (listingId.isEmpty) return;
+
     final result = await Navigator.of(context).push<String>(
       PageRouteBuilder<String>(
         pageBuilder: (_, __, ___) => OfferAmountScreen(title: title),
@@ -287,8 +268,38 @@ class _CarrierHomeScreenState extends State<CarrierHomeScreen> with TickerProvid
     );
 
     if (!mounted) return;
-    if (result != null && result.trim().isNotEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Teklif gönderildi')));
+
+    if (result == null || result.trim().isEmpty) return;
+
+    final normalized = result.trim().replaceAll(',', '.');
+    final value = double.tryParse(normalized);
+    if (value == null || value <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Geçerli bir tutar girin.')),
+      );
+      return;
+    }
+
+    try {
+      await apiClient.createOffer(listingId: listingId, amount: value);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Teklif gönderildi.')),
+      );
+      // Refresh listings/markers (listing may disappear after acceptance).
+      // ignore: unawaited_futures
+      _loadListings();
+    } catch (e) {
+      if (!mounted) return;
+      final raw = e.toString();
+      final msg = raw.contains('zaten kabul edilmiş')
+          ? 'Bu ilan için teklif kabul edilmiş. Artık teklif verilemez.'
+          : raw;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Teklif gönderilemedi: $msg')),
+      );
+      // ignore: unawaited_futures
+      _loadListings();
     }
   }
 
@@ -350,7 +361,6 @@ class _CarrierHomeScreenState extends State<CarrierHomeScreen> with TickerProvid
           markers: _markers,
           polylines: _polylines,
           onMapCreated: (controller) => _mapController = controller,
-          onTap: _onMapTap,
           onCameraMove: (pos) {
             _lastCameraPosition = pos;
           },

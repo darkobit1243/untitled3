@@ -1,13 +1,13 @@
 {
   "project_info": {
-    "project_number": "399014351134",
-    "project_id": "bitasi-15498",
-    "storage_bucket": "bitasi-15498.firebasestorage.app"
+    "project_number": "626822876186",
+    "project_id": "bitasi-983c3",
+    "storage_bucket": "bitasi-983c3.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:399014351134:android:6071b55e8d68fc13c4f90f",
+        "mobilesdk_app_id": "1:626822876186:android:5f299caa604455245b95a3",
         "android_client_info": {
           "package_name": "com.example.untitled"
         }
@@ -15,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyBbWg3avq3xBZyiQzPh6HP9c0PLGZiJOa8"
+          "current_key": "AIzaSyAQDrVg1z5eqjH1uJsS93em12XwsGh3Baw"
         }
       ],
       "services": {

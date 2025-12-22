@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart' as m;
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:firebase_core/firebase_core.dart';
 
 import 'api_client.dart';
 import 'app_settings.dart';
@@ -19,18 +20,28 @@ class PushNotifications {
 
   Future<void> init() async {
     if (!kEnableFirebasePush) return;
+
+    // If Firebase isn't configured (dev), don't crash the app.
+    if (Firebase.apps.isEmpty) return;
+
     final enabled = await appSettings.getNotificationsEnabled();
     if (!enabled) {
       await _unregisterToken();
       return;
     }
 
-    // iOS permission prompt; on Android it is a no-op.
+    // iOS permission prompt; on Android 13+ permission is handled via local notifications init.
     await FirebaseMessaging.instance.requestPermission();
 
-    await _registerCurrentToken();
+    try {
+      await _registerCurrentToken();
+    } catch (_) {
+      // Some devices/builds can fail to obtain an FCM token (e.g. FIS_AUTH_ERROR).
+      // Push is best-effort and must not block app usage.
+    }
 
     _tokenSub ??= FirebaseMessaging.instance.onTokenRefresh.listen((token) {
+      // ignore: unawaited_futures
       _registerToken(token);
     });
 

@@ -32,6 +32,7 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
   final _weightController = TextEditingController();
   final _pickupController = TextEditingController();
   final _dropoffController = TextEditingController();
+  final _receiverPhoneController = TextEditingController();
 
   bool _isSubmitting = false;
   final ImagePicker _picker = ImagePicker();
@@ -97,6 +98,7 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
     _weightController.dispose();
     _pickupController.dispose();
     _dropoffController.dispose();
+    _receiverPhoneController.dispose();
     _mapController?.dispose();
     super.dispose();
   }
@@ -275,6 +277,25 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
                 ),
                 const SizedBox(height: 16),
 
+                TextFormField(
+                  controller: _receiverPhoneController,
+                  decoration: _inputDecoration(
+                    'Alıcı Telefon Numarası *',
+                    hint: '05xx xxx xx xx',
+                    icon: Icons.phone,
+                  ),
+                  keyboardType: TextInputType.phone,
+                  validator: (value) {
+                    final v = (value ?? '').trim();
+                    if (v.isEmpty) return 'Alıcı telefon numarası gerekli.';
+                    if (v.replaceAll(RegExp(r'\D'), '').length < 10) {
+                      return 'Geçerli bir telefon numarası gir.';
+                    }
+                    return null;
+                  },
+                ),
+
+                const SizedBox(height: 16),
                 // Harita + rota
                 SizedBox(
                   height: 230,
@@ -403,6 +424,7 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
         description: _descriptionController.text.trim(),
         photoDataUrl: photoDataUrl,
         weight: weight,
+        receiverPhone: _receiverPhoneController.text,
         // Boyut ve kırılabilirlik alanlarını şimdilik varsayılan gönderiyoruz.
         length: 0,
         width: 0,
@@ -420,10 +442,20 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
         const SnackBar(content: Text('Kargo oluşturuldu.')),
       );
       Navigator.pop(context);
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
+
+      var msg = e.toString();
+      msg = msg.replaceFirst('Exception: ', '');
+      if (msg.startsWith('İlan oluşturulamadı:')) {
+        msg = msg.replaceFirst('İlan oluşturulamadı:', '').trim();
+      }
+      if (msg.length > 180) {
+        msg = '${msg.substring(0, 180)}…';
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Kargo oluşturulamadı, tekrar dene.')),
+        SnackBar(content: Text('Kargo oluşturulamadı: $msg')),
       );
     } finally {
       if (mounted) {

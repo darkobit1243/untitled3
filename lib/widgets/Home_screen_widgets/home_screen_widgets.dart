@@ -265,9 +265,21 @@ class ListingCard extends StatelessWidget {
           statusLabel = 'Yolda';
           statusColor = Colors.blue;
           break;
+        case 'at_door':
+          statusLabel = 'Kapıda';
+          statusColor = BiTasiColors.warningOrange;
+          break;
         case 'delivered':
           statusLabel = 'Teslim Edildi';
           statusColor = Colors.teal;
+          break;
+        case 'cancelled':
+          statusLabel = 'İptal';
+          statusColor = Colors.grey;
+          break;
+        case 'disputed':
+          statusLabel = 'Uyuşmazlık';
+          statusColor = BiTasiColors.errorRed;
           break;
         case 'rejected':
           statusLabel = 'Reddedildi';

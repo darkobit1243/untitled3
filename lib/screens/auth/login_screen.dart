@@ -1,8 +1,11 @@
 // lib/screens/auth/login_screen.dart
 
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 
 import '../../services/api_client.dart';
+import '../../services/app_settings.dart';
+import '../../services/local_notifications.dart';
 import '../../services/push_notifications.dart';
 import '../../services/push_config.dart';
 import '../../theme/bitasi_theme.dart';
@@ -32,8 +35,10 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _handleLogin() async {
-    final email = _emailController.text.trim();
-    final password = _passwordController.text;
+    // Normalize common mobile keyboard quirks (auto-capitalization, trailing spaces).
+    final email = _emailController.text.trim().toLowerCase();
+    // Trim only leading/trailing whitespace; keep internal spaces if user truly has them.
+    final password = _passwordController.text.trim();
 
     if (email.isEmpty || password.isEmpty) {
       setState(() {
@@ -50,7 +55,33 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       await apiClient.login(email, password);
       if (kEnableFirebasePush) {
-        await pushNotifications.syncWithSettings();
+        // Push registration is best-effort; don't fail login on devices where
+        // Firebase Installations/FCM token retrieval fails.
+        try {
+          await pushNotifications.syncWithSettings();
+          // FCM token'ı backend'e kesin kaydet
+          try {
+            final token = await FirebaseMessaging.instance.getToken();
+            if (token != null && token.trim().isNotEmpty) {
+              await apiClient.registerFcmToken(token.trim());
+            }
+          } catch (e) {
+            debugPrint('FCM token register hatası: $e');
+          }
+        } catch (_) {}
+      }
+
+      // Welcome notification (best-effort).
+      try {
+        final enabled = await appSettings.getNotificationsEnabled();
+        if (enabled) {
+          final profile = await apiClient.getProfile();
+          final fullName = profile['fullName']?.toString().trim();
+          final fallback = profile['email']?.toString().trim() ?? email;
+          await localNotifications.showWelcome(fullName: (fullName == null || fullName.isEmpty) ? fallback : fullName);
+        }
+      } catch (_) {
+        // Ignore welcome notification failures.
       }
 
       if (!mounted) return;
@@ -58,10 +89,35 @@ class _LoginScreenState extends State<LoginScreen> {
         context,
         MaterialPageRoute(builder: (context) => const MainWrapper()),
       );
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
+
+      var msg = e.toString().replaceFirst('Exception: ', '');
+
+      // Common connectivity problems on some devices/networks.
+      if (msg.contains('SocketException') || msg.contains('Failed host lookup')) {
+        msg = 'İnternet bağlantısı yok veya sunucuya ulaşılamıyor.';
+      } else if (msg.contains('HandshakeException') || msg.contains('CERTIFICATE')) {
+        msg = 'Güvenli bağlantı kurulamadı (SSL). Telefonun tarih/saat ayarını kontrol edin ve tekrar deneyin.';
+      } else if (msg.contains('FIS_AUTH_ERROR')) {
+        msg = 'Giriş başarılı olabilir ama bildirim servisi bu cihazda başlatılamadı (FIS_AUTH_ERROR). Lütfen Google Play Hizmetleri ve tarih/saat ayarını kontrol edin.';
+      } else if (msg.contains('Giriş başarısız: 401') || msg.contains('statusCode":401') || msg.contains('Unauthorized')) {
+        msg = 'E-posta veya şifre hatalı. Tekrar deneyin.';
+      } else if (msg.contains('Giriş başarısız: 403') || msg.contains('Forbidden')) {
+        msg = 'Giriş engellendi (403). Rol/hesap yetkilerini kontrol edin.';
+      } else if (msg.startsWith('Giriş başarısız:')) {
+        // Keep the backend-provided body visible for debugging.
+        if (msg.length > 220) {
+          msg = '${msg.substring(0, 220)}…';
+        }
+      } else {
+        if (msg.length > 220) {
+          msg = '${msg.substring(0, 220)}…';
+        }
+      }
+
       setState(() {
-        _error = 'E-posta veya şifre hatalı. Tekrar deneyin.';
+        _error = msg;
       });
     } finally {
       if (mounted) {
@@ -218,6 +274,9 @@ class _LoginScreenState extends State<LoginScreen> {
                           TextField(
                             controller: _emailController,
                             keyboardType: TextInputType.emailAddress,
+                            autocorrect: false,
+                            enableSuggestions: false,
+                            textCapitalization: TextCapitalization.none,
                             decoration: const InputDecoration(
                               hintText: 'ornek@eposta.com',
                               prefixIcon: Icon(Icons.email_outlined),
@@ -262,6 +321,8 @@ class _LoginScreenState extends State<LoginScreen> {
                           TextField(
                             controller: _passwordController,
                             obscureText: true,
+                            autocorrect: false,
+                            enableSuggestions: false,
                             decoration: const InputDecoration(
                               hintText: '••••••••',
                               prefixIcon: Icon(Icons.lock_outline),

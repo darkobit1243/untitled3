@@ -13,10 +13,13 @@ class ApiClient {
   final http.Client _client;
   bool enableLogging = false;
 
-  /// Production backend base URL (Railway).
+  /// Backend base URL.
   ///
-  /// Tüm platformlarda aynı URL'yi kullanıyoruz.
-  String get _baseUrl => 'https://kargo-backend-production.up.railway.app';
+  /// Default: Railway production.
+  /// Override (e.g. local): pass `--dart-define=API_BASE_URL=http://10.0.2.2:3000`
+  /// (Android emulator) or your machine IP.
+  static const String _defaultBaseUrl = 'https://kargo-backend-production.up.railway.app';
+  String get _baseUrl => const String.fromEnvironment('API_BASE_URL', defaultValue: _defaultBaseUrl);
 
   String? _jwt;
   String? _userId;
@@ -236,9 +239,19 @@ class ApiClient {
     try {
       await _getUserIdAndRole();
       return true;
-    } catch (_) {
-      await clearToken();
-      return false;
+    } catch (e) {
+      // Don't log the user out on transient network/SSL failures.
+      // Only clear the token if the backend clearly rejected it.
+      final msg = e.toString();
+      final looksUnauthorized = msg.contains('401') || msg.contains('403') || msg.contains('Unauthorized');
+      if (looksUnauthorized) {
+        await clearToken();
+        return false;
+      }
+
+      // Keep the stored token; app may be offline or backend unreachable.
+      // Subsequent calls can retry /auth/me.
+      return true;
     }
   }
 
@@ -350,6 +363,19 @@ class ApiClient {
     }
   }
 
+  Future<Map<String, dynamic>> fetchListingById(String listingId) async {
+    final resp = await _client.get(
+      Uri.parse('$_baseUrl/listings/$listingId'),
+      headers: const <String, String>{
+        'Content-Type': 'application/json',
+      },
+    );
+    if (resp.statusCode >= 400) {
+      throw Exception('İlan detayı alınamadı: ${resp.body}');
+    }
+    return jsonDecode(resp.body) as Map<String, dynamic>;
+  }
+
   Future<List<dynamic>> _fetchListingsFromNetwork() async {
     final resp = await _client.get(
       Uri.parse('$_baseUrl/listings'),
@@ -382,6 +408,7 @@ class ApiClient {
     required String description,
     String? photoDataUrl,
     required double weight,
+    String? receiverPhone,
     double length = 0,
     double width = 0,
     double height = 0,
@@ -409,6 +436,8 @@ class ApiClient {
         'fragile': fragile,
         'pickup_location': {'lat': pickupLat, 'lng': pickupLng},
         'dropoff_location': {'lat': dropoffLat, 'lng': dropoffLng},
+        if (receiverPhone != null && receiverPhone.trim().isNotEmpty)
+          'receiver_phone': receiverPhone.trim(),
       }),
     );
     if (resp.statusCode >= 400) {
@@ -571,6 +600,29 @@ class ApiClient {
     );
     if (resp.statusCode >= 400) {
       throw Exception('Teslim etme işlemi başarısız: ${resp.body}');
+    }
+    return jsonDecode(resp.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> sendDeliveryCode(String deliveryId) async {
+    final resp = await _client.post(
+      Uri.parse('$_baseUrl/deliveries/$deliveryId/send-delivery-code'),
+      headers: _headers(),
+    );
+    if (resp.statusCode >= 400) {
+      throw Exception('Kod gönderme işlemi başarısız: ${resp.body}');
+    }
+    return jsonDecode(resp.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> confirmDeliveryWithFirebase(String deliveryId, {required String idToken}) async {
+    final resp = await _client.post(
+      Uri.parse('$_baseUrl/deliveries/$deliveryId/confirm-delivery'),
+      headers: _headers(),
+      body: jsonEncode(<String, dynamic>{'idToken': idToken}),
+    );
+    if (resp.statusCode >= 400) {
+      throw Exception('Teslim onayı başarısız: ${resp.body}');
     }
     return jsonDecode(resp.body) as Map<String, dynamic>;
   }

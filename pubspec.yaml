@@ -36,6 +36,7 @@ dependencies:
   cloud_firestore: ^6.1.0      # Firestore
   firebase_storage: ^13.0.4    # Storage
   firebase_messaging: ^16.0.0  # Push notifications (FCM)
+  flutter_local_notifications: ^18.0.1
   google_maps_flutter: ^2.14.0 # Harita
   image_picker: ^1.2.1         # Kamera / galeri erişimi
   flutter_riverpod: ^3.0.3     # State management
@@ -45,6 +46,8 @@ dependencies:
   flutter_svg: ^2.0.9
   camera: ^0.10.5
   geolocator: ^10.1.0
+  flutter_background_service: ^5.1.0
+  flutter_background_service_android: ^6.3.1
   http: ^1.1.0
   dio: ^5.4.0
   shared_preferences: ^2.2.2
