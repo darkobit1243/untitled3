@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -13,6 +14,9 @@ class LocalNotifications {
 
   final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
   bool _initialized = false;
+  
+  /// Tıklama olayını dinlemek isteyenler (örn: main.dart veya PushNotifications) buraya fonksiyon atayabilir.
+  Function(Map<String, dynamic>)? onNotificationTap;
 
   Future<void> init() async {
     if (_initialized) return;
@@ -29,7 +33,19 @@ class LocalNotifications {
       iOS: iosInit,
     );
 
-    await _plugin.initialize(initSettings);
+    await _plugin.initialize(
+      initSettings,
+      onDidReceiveNotificationResponse: (details) {
+        if (details.payload != null && onNotificationTap != null) {
+          try {
+            final dynamic data = _decodePayload(details.payload!);
+            if (data is Map<String, dynamic>) {
+               onNotificationTap!(data);
+            }
+          } catch (_) {}
+        }
+      },
+    );
 
     if (!kIsWeb && Platform.isAndroid) {
       final android = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
@@ -84,6 +100,15 @@ class LocalNotifications {
     if ((title ?? '').trim().isEmpty && (body ?? '').trim().isEmpty) return;
 
     final id = DateTime.now().millisecondsSinceEpoch.remainder(1 << 31);
+    
+    String? payload;
+    try {
+      if (message.data.isNotEmpty) {
+        payload = jsonEncode(message.data);
+      }
+    } catch (_) {
+      // JSON encode hatası olursa payload null kalsın.
+    }
 
     await _plugin.show(
       id,
@@ -99,7 +124,12 @@ class LocalNotifications {
         ),
         iOS: DarwinNotificationDetails(),
       ),
+      payload: payload,
     );
+  }
+
+  dynamic _decodePayload(String payload) {
+     return jsonDecode(payload);
   }
 }
 

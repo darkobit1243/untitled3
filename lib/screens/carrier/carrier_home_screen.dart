@@ -13,6 +13,7 @@ import '../../widgets/Home_screen_widgets/home_screen_widgets.dart';
 import 'ilanlar_screen.dart';
 import '../home_common.dart';
 import '../offer_amount_screen.dart';
+import 'nearby_listings_screen.dart';
 
 class CarrierHomeScreen extends StatefulWidget {
   const CarrierHomeScreen({super.key});
@@ -412,8 +413,63 @@ class _CarrierHomeScreenState extends State<CarrierHomeScreen> with TickerProvid
   }
 
   Widget _buildSearchAndSummaryCard(BuildContext context) {
-    return Container(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 16)]), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [RoleSummaryCard(role: 'carrier', isLoading: false, error: null, senderListingCount: null, senderPendingOffers: null, carrierDeliveryCount: null), const SizedBox(height: 12), Container(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8), decoration: BoxDecoration(color: Colors.grey.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(16)), child: Row(children: [const Icon(Icons.search, color: Colors.grey), const SizedBox(width: 10), Expanded(child: TextField(controller: _searchController, decoration: const InputDecoration(hintText: 'Adres veya yer ara...', border: InputBorder.none), onChanged: _onSearchChanged))]))]));
-
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 16)],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          RoleSummaryCard(role: 'carrier', isLoading: false, error: null),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.grey.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.search, color: Colors.grey),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: TextField(
+                    controller: _searchController,
+                    decoration: const InputDecoration(
+                      hintText: 'Adres veya yer ara...',
+                      border: InputBorder.none,
+                    ),
+                    onChanged: _onSearchChanged,
+                  ),
+                )
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const NearbyListingsScreen()),
+                );
+              },
+              icon: const Icon(Icons.radar, size: 18),
+              label: const Text('Yakınımdaki Yükleri Bul'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: BiTasiColors.primaryBlue,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildPredictionList() {

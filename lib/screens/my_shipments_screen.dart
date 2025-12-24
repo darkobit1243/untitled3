@@ -57,16 +57,47 @@ class _MyShipmentsScreenState extends State<MyShipmentsScreen> with TickerProvid
       _isLoading = true;
     });
     try {
-      // Fetch listings + deliveries + my ratings concurrently for faster loading.
-      final results = await Future.wait<dynamic>([
-        apiClient.fetchMyListings(),
-        apiClient.fetchSenderDeliveries(),
-        apiClient.fetchMyGivenRatings().catchError((_) => <dynamic>[]),
-      ]);
+      List<dynamic> listingsData = [];
+      List<dynamic> deliveriesData = [];
+      List<dynamic> mineRatings = [];
+      bool usedCache = false;
 
-      final listingsData = results[0] is List ? List<dynamic>.from(results[0] as List) : <dynamic>[];
-      final deliveriesData = results[1] is List ? List<dynamic>.from(results[1] as List) : <dynamic>[];
-      final mineRatings = results[2] is List ? List<dynamic>.from(results[2] as List) : <dynamic>[];
+      try {
+        // Fetch listings + deliveries + my ratings concurrently.
+        final results = await Future.wait<dynamic>([
+          apiClient.fetchMyListings(),
+          apiClient.fetchSenderDeliveries(),
+          apiClient.fetchMyGivenRatings().catchError((_) => <dynamic>[]),
+        ]);
+
+        listingsData = results[0] is List ? List<dynamic>.from(results[0] as List) : <dynamic>[];
+        deliveriesData = results[1] is List ? List<dynamic>.from(results[1] as List) : <dynamic>[];
+        mineRatings = results[2] is List ? List<dynamic>.from(results[2] as List) : <dynamic>[];
+      } catch (e) {
+        // Network error -> Try cache
+        listingsData = await apiClient.getMyListingsCache();
+        deliveriesData = await apiClient.getSenderDeliveriesCache();
+        // Ratings cache is not critical, skip it or add cache support later if needed.
+        usedCache = true;
+
+        if (listingsData.isEmpty && deliveriesData.isEmpty) {
+           if (!mounted) return;
+           ScaffoldMessenger.of(context).showSnackBar(
+             SnackBar(content: Text('Bağlantı yok ve kayıtlı veri bulunamadı.')),
+           );
+           setState(() => _isLoading = false);
+           return;
+        }
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+             const SnackBar(
+               content: Text('Offline moddasınız. Kayıtlı veriler gösteriliyor.'),
+               backgroundColor: BiTasiColors.warningOrange,
+             ),
+          );
+        }
+      }
 
       final listingById = <String, Map<String, dynamic>>{};
       for (final l in listingsData) {

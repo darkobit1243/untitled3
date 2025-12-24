@@ -10,6 +10,7 @@ import 'auth/login_screen.dart';
 import 'notifications_settings_screen.dart';
 import 'payment_setup_screen.dart';
 import 'security_screen.dart';
+import 'admin_dashboard_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -134,6 +135,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(height: 16),
             _buildStatsRow(),
             const SizedBox(height: 32),
+            if (_profile?['role'] == 'admin') ...[
+              Center(
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const AdminDashboardScreen()),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.black87,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                  ),
+                  icon: const Icon(Icons.admin_panel_settings),
+                  label: const Text('ADMİN PANELİ'),
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
             Center(
               child: ElevatedButton.icon(
                 onPressed: () async {

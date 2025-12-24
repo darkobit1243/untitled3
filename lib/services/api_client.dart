@@ -477,7 +477,40 @@ class ApiClient {
     if (resp.statusCode >= 400) {
       throw Exception('Kendi ilanların alınamadı: ${resp.body}');
     }
+    // Cache'e kaydet
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('my_listings_cache_$ownerId', jsonEncode(jsonDecode(resp.body)));
+    } catch (_) {}
     return jsonDecode(resp.body) as List<dynamic>;
+  }
+
+  Future<List<dynamic>> fetchNearbyListings(double lat, double lng, {double radius = 50}) async {
+    final resp = await _client.get(
+      Uri.parse('$_baseUrl/listings/nearby?lat=$lat&lng=$lng&radius=$radius'),
+      headers: _headers(),
+    );
+    if (resp.statusCode >= 400) {
+      throw Exception('Yakındaki ilanlar alınamadı: ${resp.body}');
+    }
+    return jsonDecode(resp.body) as List<dynamic>;
+  }
+  
+  Future<List<dynamic>> getMyListingsCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final ownerId = _userId; // _userId null olabilir, ama genelde set edilmiştir.
+      // Eğer userId yoksa cache key de bulunamaz, o yüzden boş dön.
+      // Ancak _getUserIdAndRole() denemek istersek o da network çağırabilir.
+      // Basitlik için _userId varsa memoryden okuyalım.
+      if (ownerId == null) return [];
+      
+      final raw = prefs.getString('my_listings_cache_$ownerId');
+      if (raw != null) {
+        return jsonDecode(raw) as List<dynamic>;
+      }
+    } catch (_) {}
+    return [];
   }
 
   // OFFERS
@@ -550,10 +583,46 @@ class ApiClient {
       headers: _headers(),
     );
     if (resp.statusCode >= 400) {
-      throw Exception('Teslimatlar alınamadı: ${resp.body}');
+      throw Exception('Taşıyıcı teslimatları alınamadı: ${resp.body}');
     }
+    // Cache'e kaydet
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('sender_deliveries_cache_$carrierId', jsonEncode(jsonDecode(resp.body)));
+    } catch (_) {}
     return jsonDecode(resp.body) as List<dynamic>;
   }
+
+  // ADMIN
+  Future<Map<String, dynamic>> fetchAdminStats() async {
+    final resp = await _client.get(Uri.parse('$_baseUrl/admin/stats'), headers: _headers());
+    if (resp.statusCode >= 400) throw Exception(resp.body);
+    return jsonDecode(resp.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> fetchAdminUsers({String? role, String? status, String? search, int page = 1}) async {
+    var url = '$_baseUrl/admin/users?page=$page&limit=20';
+    if (role != null) url += '&role=$role';
+    if (status != null) url += '&status=$status';
+    if (search != null && search.isNotEmpty) url += '&search=$search';
+
+    final resp = await _client.get(Uri.parse(url), headers: _headers());
+    if (resp.statusCode >= 400) throw Exception(resp.body);
+    return jsonDecode(resp.body) as Map<String, dynamic>;
+  }
+
+  Future<void> adminVerifyUser(String userId, bool approve) async {
+    final endpoint = approve ? 'verify' : 'reject';
+    final resp = await _client.post(Uri.parse('$_baseUrl/admin/$endpoint/$userId'), headers: _headers());
+    if (resp.statusCode >= 400) throw Exception(resp.body);
+  }
+
+  Future<void> adminSetBanStatus(String userId, bool ban) async {
+    final endpoint = ban ? 'ban' : 'unban';
+    final resp = await _client.post(Uri.parse('$_baseUrl/admin/$endpoint/$userId'), headers: _headers());
+    if (resp.statusCode >= 400) throw Exception(resp.body);
+  }
+
 
   Future<List<dynamic>> fetchSenderDeliveries() async {
     final ownerId = await _getUserIdAndRole();
@@ -564,7 +633,29 @@ class ApiClient {
     if (resp.statusCode >= 400) {
       throw Exception('Teslimatlar alınamadı: ${resp.body}');
     }
-    return jsonDecode(resp.body) as List<dynamic>;
+    final list = jsonDecode(resp.body) as List<dynamic>;
+    
+    // Cache'e kaydet
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('sender_deliveries_cache_$ownerId', jsonEncode(list));
+    } catch (_) {}
+    
+    return list;
+  }
+
+  Future<List<dynamic>> getSenderDeliveriesCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final ownerId = _userId; 
+      if (ownerId == null) return [];
+      
+      final raw = prefs.getString('sender_deliveries_cache_$ownerId');
+      if (raw != null) {
+        return jsonDecode(raw) as List<dynamic>;
+      }
+    } catch (_) {}
+    return [];
   }
 
   Future<Map<String, dynamic>> pickupDelivery(String deliveryId) async {

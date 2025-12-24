@@ -96,11 +96,11 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     const config = ImageConfiguration(
       size: Size(markerSize, markerSize),
     );
-    _pickupIconFuture ??= BitmapDescriptor.asset(
+    _pickupIconFuture ??= BitmapDescriptor.fromAssetImage(
       config,
       'assets/markers/Alis_noktasi.png',
     );
-    _dropoffIconFuture ??= BitmapDescriptor.asset(
+    _dropoffIconFuture ??= BitmapDescriptor.fromAssetImage(
       config,
       'assets/markers/Varis_noktasi.png',
     );

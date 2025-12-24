@@ -3,6 +3,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'dart:ui';
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import 'screens/auth/login_screen.dart';
 import 'screens/main_wrapper.dart';
 import 'services/api_client.dart';
@@ -76,7 +78,7 @@ Future<void> main() async {
 
   // Configure background tracking service (Android foreground service / iOS background hooks).
   await BackgroundTrackingService.initialize();
-  runApp(const BiTasiApp());
+  runApp(const ProviderScope(child: BiTasiApp()));
 }
 
 class BiTasiApp extends StatelessWidget {

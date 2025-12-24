@@ -106,7 +106,7 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                           const Icon(Icons.cloud_off, size: 48, color: Colors.grey),
                           const SizedBox(height: 12),
                           const Text(
-                            'İlanlar yüklenemedi.',
+                            'Bağlantı yok veya ilanlar yüklenemedi.',
                             style: TextStyle(
                               fontWeight: FontWeight.w600,
                               color: BiTasiColors.textDarkGrey,
@@ -114,9 +114,19 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            '${snapshot.error}',
+                            'Çevrimdışısınız veya sunucuya ulaşılamıyor. Son kayıtlı veriler gösteriliyor olabilir.',
                             textAlign: TextAlign.center,
                             style: const TextStyle(color: Colors.grey, fontSize: 12),
+                          ),
+                          const SizedBox(height: 12),
+                          ElevatedButton.icon(
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('Tekrar Dene'),
+                            onPressed: () {
+                              setState(() {
+                                _listingsFuture = apiClient.fetchListings(forceRefresh: true);
+                              });
+                            },
                           ),
                         ],
                       ),

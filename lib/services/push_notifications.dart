@@ -8,6 +8,7 @@ import 'api_client.dart';
 import 'app_settings.dart';
 import 'app_navigator.dart';
 import 'push_config.dart';
+import 'local_notifications.dart';
 import '../screens/main_wrapper.dart';
 
 class PushNotifications {
@@ -23,6 +24,11 @@ class PushNotifications {
 
     // If Firebase isn't configured (dev), don't crash the app.
     if (Firebase.apps.isEmpty) return;
+    
+    // Bind local notification tap
+    localNotifications.onNotificationTap = (data) {
+      _handleOpenData(data);
+    };
 
     final enabled = await appSettings.getNotificationsEnabled();
     if (!enabled) {
@@ -52,38 +58,34 @@ class PushNotifications {
       _onMessageSub ??= FirebaseMessaging.onMessage.listen((message) async {
         final enabledNow = await appSettings.getNotificationsEnabled();
         if (!enabledNow) return;
-
-        final ctx = appNavigatorKey.currentContext;
-        if (ctx == null) return;
-        final title = message.notification?.title;
-        final body = message.notification?.body;
-        if ((title ?? '').isEmpty && (body ?? '').isEmpty) return;
-
-        // ignore: use_build_context_synchronously
-        m.ScaffoldMessenger.of(ctx).showSnackBar(
-          m.SnackBar(content: m.Text(body ?? title ?? 'Bildirim')),
-        );
+        
+        // Show local notification for heads-up appearance if desired,
+        // or just Snackbar as before. Syncing with user preference is good.
+        // For now, keeping the snackbar logic but also triggering local notification 
+        // allows 'tap' to work even for foreground messages if the user pulls down the shade.
+        await localNotifications.showFromRemoteMessage(message);
       });
 
       // Background tap: navigate
       _onOpenedSub ??= FirebaseMessaging.onMessageOpenedApp.listen((message) {
-        _handleOpen(message);
+        _handleOpenData(message.data);
       });
 
       // Terminated -> opened
       final initial = await FirebaseMessaging.instance.getInitialMessage();
       if (initial != null) {
-        _handleOpen(initial);
+        _handleOpenData(initial.data);
       }
     }
   }
 
-  void _handleOpen(RemoteMessage message) {
-    final data = message.data;
+  void _handleOpenData(Map<String, dynamic> data) {
     final type = data['type']?.toString();
     final listingId = data['listingId']?.toString();
+    // final deliveryId = data['deliveryId']?.toString(); 
 
     if (type == 'offer' && listingId != null && listingId.isNotEmpty) {
+      // Teklif geldiğinde "Kargolarım" sekmesine (index 1) ve detayına git
       appNavigatorKey.currentState?.pushAndRemoveUntil(
         m.MaterialPageRoute<void>(
           builder: (_) => MainWrapper(
@@ -95,10 +97,32 @@ class PushNotifications {
       );
       return;
     }
+    
+    if (type == 'delivery_status' || type == 'delivery') {
+      // Teslimat güncellemesi (Taşımalarım veya Kargolarım) -> Index 1
+      appNavigatorKey.currentState?.pushAndRemoveUntil(
+        m.MaterialPageRoute<void>(
+          builder: (_) => const MainWrapper(initialIndex: 1),
+        ),
+        (route) => false,
+      );
+      return;
+    }
 
-    // Default: just open the app main shell.
+    if (type == 'message') {
+      // Sohbet -> Index 2 (Mesajlar)
+      appNavigatorKey.currentState?.pushAndRemoveUntil(
+        m.MaterialPageRoute<void>(
+          builder: (_) => const MainWrapper(initialIndex: 2),
+        ),
+        (route) => false,
+      );
+      return;
+    }
+
+    // Default: just open the app main shell (Home tab)
     appNavigatorKey.currentState?.pushAndRemoveUntil(
-      m.MaterialPageRoute<void>(builder: (_) => const MainWrapper()),
+      m.MaterialPageRoute<void>(builder: (_) => const MainWrapper(initialIndex: 0)),
       (route) => false,
     );
   }

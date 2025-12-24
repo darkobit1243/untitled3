@@ -1,32 +1,30 @@
 // Kargo ilanı oluşturma + Google Maps / Places / Directions entegrasyonu
 
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 
-import '../services/api_client.dart';
-import '../services/google_api_keys.dart';
+import '../providers/create_shipment_provider.dart';
 import '../services/location_gate.dart';
 import 'location_picker_screen.dart';
 
-class CreateShipmentScreen extends StatefulWidget {
+class CreateShipmentScreen extends ConsumerStatefulWidget {
   const CreateShipmentScreen({super.key});
 
   @override
-  State<CreateShipmentScreen> createState() => _CreateShipmentScreenState();
+  ConsumerState<CreateShipmentScreen> createState() => _CreateShipmentScreenState();
 }
 
-class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
+class _CreateShipmentScreenState extends ConsumerState<CreateShipmentScreen> {
   final _formKey = GlobalKey<FormState>();
 
-  // Form alanları
+  // Form alanları (Text controller UI'a özeldir, burada kalabilir)
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _weightController = TextEditingController();
@@ -34,24 +32,8 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
   final _dropoffController = TextEditingController();
   final _receiverPhoneController = TextEditingController();
 
-  bool _isSubmitting = false;
   final ImagePicker _picker = ImagePicker();
-  XFile? _pickedImage;
-
-  // Google Maps & Places state
-  final Dio _dio = Dio();
   GoogleMapController? _mapController;
-  LatLng? _currentLocation;
-  LatLng? _pickupLocation;
-  LatLng? _dropoffLocation;
-
-  final Set<Marker> _markers = {};
-  final Set<Polyline> _polylines = {};
-
-  BitmapDescriptor? _pickupMarkerIcon;
-  BitmapDescriptor? _dropoffMarkerIcon;
-
-  // (Autocomplete bu ekranda değil, tam ekran LocationPicker'da yapılıyor)
 
   static const CameraPosition _fallbackCamera = CameraPosition(
     target: LatLng(41.0082, 28.9784),
@@ -62,33 +44,31 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _initCurrentLocation();
-      _prepareMarkerIcons();
+      _initHelper();
     });
   }
 
-  Future<void> _prepareMarkerIcons() async {
+  Future<void> _initHelper() async {
+    // Marker ikonlarını yükle ve provider'a set et
     try {
       const markerSize = 56.0;
       const config = ImageConfiguration(size: Size(markerSize, markerSize));
 
-      final pickupIcon = await BitmapDescriptor.asset(
+      final pickupIcon = await BitmapDescriptor.fromAssetImage(
         config,
         'assets/markers/Alis_noktasi.png',
       );
-      final dropoffIcon = await BitmapDescriptor.asset(
+      final dropoffIcon = await BitmapDescriptor.fromAssetImage(
         config,
         'assets/markers/Varis_noktasi.png',
       );
-      if (!mounted) return;
-      setState(() {
-        _pickupMarkerIcon = pickupIcon;
-        _dropoffMarkerIcon = dropoffIcon;
-      });
-      _updateMarkersAndRoute();
-    } catch (_) {
-      // ignore
-    }
+      
+      if (mounted) {
+        ref.read(createShipmentProvider.notifier).setIcons(pickupIcon, dropoffIcon);
+      }
+    } catch (_) {}
+
+    await _initCurrentLocation();
   }
 
   @override
@@ -105,6 +85,32 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // State'i dinle
+    final state = ref.watch(createShipmentProvider);
+
+    // Hata veya Başarı durumlarını dinlemek için listen
+    ref.listen(createShipmentProvider, (previous, next) {
+      if (next.errorMessage != null && next.errorMessage != previous?.errorMessage) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(next.errorMessage!)),
+        );
+      }
+      if (next.isSuccess && (previous == null || !previous.isSuccess)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Kargo oluşturuldu.')),
+        );
+        Navigator.pop(context);
+      }
+    });
+
+    // Form alanlarını güncelle (eğer haritadan seçildiyse)
+    if (state.pickupAddress != null && _pickupController.text != state.pickupAddress) {
+      _pickupController.text = state.pickupAddress!;
+    }
+    if (state.dropoffAddress != null && _dropoffController.text != state.dropoffAddress) {
+      _dropoffController.text = state.dropoffAddress!;
+    }
+
     return Scaffold(
       appBar: AppBar(title: const Text('Kargo Gönderim Ekranı')),
       body: SafeArea(
@@ -131,7 +137,7 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(color: Colors.grey.shade300),
                     ),
-                    child: _pickedImage == null
+                    child: state.pickedImage == null
                         ? Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: const [
@@ -151,7 +157,7 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
                         : ClipRRect(
                             borderRadius: BorderRadius.circular(16),
                             child: Image.file(
-                              File(_pickedImage!.path),
+                              File(state.pickedImage!.path),
                               fit: BoxFit.cover,
                             ),
                           ),
@@ -223,7 +229,7 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
                     hint: 'İstanbul Kadıköy...',
                     icon: Icons.my_location,
                   ),
-                  validator: (value) => value == null || value.isEmpty ? 'Lütfen alış noktasını gir.' : null,
+                  validator: (value) => state.pickupLocation == null ? 'Lütfen alış noktasını gir.' : null,
                   readOnly: true,
                   onTap: () async {
                     final result = await Navigator.push<LocationResult?>(
@@ -231,17 +237,14 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
                       MaterialPageRoute(
                         builder: (context) => LocationPickerScreen(
                           title: 'Alış Noktası Seç',
-                          initialPosition: _pickupLocation ?? _currentLocation,
+                          initialPosition: state.pickupLocation ?? state.currentLocation,
                           markerKind: LocationPickerMarkerKind.pickup,
                         ),
                       ),
                     );
                     if (result != null) {
-                      setState(() {
-                        _pickupLocation = result.position;
-                        _pickupController.text = result.description;
-                      });
-                      _updateMarkersAndRoute();
+                      ref.read(createShipmentProvider.notifier).setPickup(result.position, result.description);
+                      _updateMapBounds(state.pickupLocation, state.dropoffLocation);
                     }
                   },
                 ),
@@ -253,7 +256,7 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
                     hint: 'Ankara Çankaya...',
                     icon: Icons.location_on,
                   ),
-                  validator: (value) => value == null || value.isEmpty ? 'Lütfen teslim noktasını gir.' : null,
+                  validator: (value) => state.dropoffLocation == null ? 'Lütfen teslim noktasını gir.' : null,
                   readOnly: true,
                   onTap: () async {
                     final result = await Navigator.push<LocationResult?>(
@@ -261,17 +264,14 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
                       MaterialPageRoute(
                         builder: (context) => LocationPickerScreen(
                           title: 'Teslim Noktası Seç',
-                          initialPosition: _dropoffLocation ?? _currentLocation,
+                          initialPosition: state.dropoffLocation ?? state.currentLocation,
                           markerKind: LocationPickerMarkerKind.dropoff,
                         ),
                       ),
                     );
                     if (result != null) {
-                      setState(() {
-                        _dropoffLocation = result.position;
-                        _dropoffController.text = result.description;
-                      });
-                      _updateMarkersAndRoute();
+                      ref.read(createShipmentProvider.notifier).setDropoff(result.position, result.description);
+                      _updateMapBounds(state.pickupLocation, state.dropoffLocation);
                     }
                   },
                 ),
@@ -304,14 +304,14 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
                     child: Stack(
                       children: [
                         GoogleMap(
-                          initialCameraPosition: _currentLocation != null
-                              ? CameraPosition(target: _currentLocation!, zoom: 12)
+                          initialCameraPosition: state.currentLocation != null
+                              ? CameraPosition(target: state.currentLocation!, zoom: 12)
                               : _fallbackCamera,
-                          myLocationEnabled: _currentLocation != null,
+                          myLocationEnabled: state.currentLocation != null,
                           myLocationButtonEnabled: false,
                           zoomControlsEnabled: false,
-                          markers: _markers,
-                          polylines: _polylines,
+                          markers: state.markers,
+                          polylines: state.polylines,
                           onMapCreated: (controller) {
                             _mapController = controller;
                           },
@@ -339,8 +339,8 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
                 SizedBox(
                   height: 50,
                   child: ElevatedButton(
-                    onPressed: _isSubmitting ? null : _submitForm,
-                    child: _isSubmitting
+                    onPressed: state.isLoading ? null : _submitForm,
+                    child: state.isLoading
                         ? const SizedBox(
                             height: 20,
                             width: 20,
@@ -375,94 +375,12 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
 
   void _submitForm() {
     if (_formKey.currentState!.validate()) {
-      if (_pickedImage == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Fotoğraf eklemeden devam edemezsiniz.')),
-        );
-        return;
-      }
-      if (_pickupLocation == null || _dropoffLocation == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Lütfen haritadan alış ve teslim noktalarını seç.')),
-        );
-        return;
-      }
-      _createListing();
-    }
-  }
-              
-  String _inferMimeTypeFromPath(String path) {
-    final lower = path.toLowerCase();
-    if (lower.endsWith('.png')) return 'image/png';
-    if (lower.endsWith('.webp')) return 'image/webp';
-    return 'image/jpeg';
-  }
-
-  Future<String> _buildPickedImageDataUrl() async {
-    final picked = _pickedImage;
-    if (picked == null) {
-      throw StateError('picked image is null');
-    }
-    final bytes = await File(picked.path).readAsBytes();
-    final b64 = base64Encode(bytes);
-    final mime = _inferMimeTypeFromPath(picked.path);
-    return 'data:$mime;base64,$b64';
-  }
-
-  Future<void> _createListing() async {
-    setState(() {
-      _isSubmitting = true;
-    });
-
-    try {
-      final weight = double.tryParse(_weightController.text.trim()) ?? 0;
-
-      final photoDataUrl = await _buildPickedImageDataUrl();
-
-      await apiClient.createListing(
+      ref.read(createShipmentProvider.notifier).submitListing(
         title: _titleController.text.trim(),
         description: _descriptionController.text.trim(),
-        photoDataUrl: photoDataUrl,
-        weight: weight,
-        receiverPhone: _receiverPhoneController.text,
-        // Boyut ve kırılabilirlik alanlarını şimdilik varsayılan gönderiyoruz.
-        length: 0,
-        width: 0,
-        height: 0,
-        fragile: false,
-        // Koordinatlar Google Places'tan gelen değerlere göre.
-        pickupLat: _pickupLocation!.latitude,
-        pickupLng: _pickupLocation!.longitude,
-        dropoffLat: _dropoffLocation!.latitude,
-        dropoffLng: _dropoffLocation!.longitude,
+        weight: double.tryParse(_weightController.text.trim()) ?? 0,
+        receiverPhone: _receiverPhoneController.text.trim(),
       );
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Kargo oluşturuldu.')),
-      );
-      Navigator.pop(context);
-    } catch (e) {
-      if (!mounted) return;
-
-      var msg = e.toString();
-      msg = msg.replaceFirst('Exception: ', '');
-      if (msg.startsWith('İlan oluşturulamadı:')) {
-        msg = msg.replaceFirst('İlan oluşturulamadı:', '').trim();
-      }
-      if (msg.length > 180) {
-        msg = '${msg.substring(0, 180)}…';
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Kargo oluşturulamadı: $msg')),
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isSubmitting = false;
-        });
-      }
     }
   }
 
@@ -474,9 +392,7 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
         imageQuality: 80,
       );
       if (image == null) return;
-      setState(() {
-        _pickedImage = image;
-      });
+      ref.read(createShipmentProvider.notifier).setImage(image);
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -485,7 +401,7 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
     }
   }
 
-  // --- Konum & Google Places / Directions helper'ları ---
+  // --- Konum Helperları ---
 
   Future<void> _initCurrentLocation({bool userInitiated = false}) async {
     try {
@@ -495,18 +411,27 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
       );
       if (!ok) return;
 
-      await _setLastKnownLocation();
+      final last = await Geolocator.getLastKnownPosition();
+      if (last != null) {
+        final loc = LatLng(last.latitude, last.longitude);
+        ref.read(createShipmentProvider.notifier).setCurrentLocation(loc);
+        _mapController?.animateCamera(
+          CameraUpdate.newCameraPosition(
+            CameraPosition(target: loc, zoom: 12),
+          ),
+        );
+      }
+      
       final pos = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.medium,
         timeLimit: const Duration(seconds: 5),
       );
-      _currentLocation = LatLng(pos.latitude, pos.longitude);
-
-      _updateMarkersAndRoute();
+      final currentLoc = LatLng(pos.latitude, pos.longitude);
+      ref.read(createShipmentProvider.notifier).setCurrentLocation(currentLoc);
 
       _mapController?.animateCamera(
         CameraUpdate.newCameraPosition(
-          CameraPosition(target: _currentLocation!, zoom: 12),
+          CameraPosition(target: currentLoc, zoom: 12),
         ),
       );
     } catch (_) {
@@ -514,200 +439,31 @@ class _CreateShipmentScreenState extends State<CreateShipmentScreen> {
     }
   }
 
-  Future<void> _setLastKnownLocation() async {
-    if (_currentLocation != null) return;
-    final last = await Geolocator.getLastKnownPosition();
-    if (last == null) return;
-    _currentLocation = LatLng(last.latitude, last.longitude);
-    _updateMarkersAndRoute();
-    _mapController?.moveCamera(
-      CameraUpdate.newCameraPosition(
-        CameraPosition(target: _currentLocation!, zoom: 12),
-      ),
-    );
-  }
-
   Future<void> _goToCurrentLocation() async {
-    if (_currentLocation == null) {
-      await _ensureCurrentLocation(userInitiated: true);
-    }
-    if (_mapController != null && _currentLocation != null) {
+    await _initCurrentLocation(userInitiated: true);
+    final current = ref.read(createShipmentProvider).currentLocation;
+    if (_mapController != null && current != null) {
       await _mapController!.animateCamera(
         CameraUpdate.newCameraPosition(
-          CameraPosition(target: _currentLocation!, zoom: 14),
+          CameraPosition(target: current, zoom: 14),
         ),
       );
     }
   }
-
-  Future<void> _ensureCurrentLocation({bool userInitiated = false}) async {
-    if (_currentLocation != null) return;
-    final ok = await LocationGate.ensureReady(
-      context: context,
-      userInitiated: userInitiated,
+  
+  void _updateMapBounds(LatLng? p1, LatLng? p2) {
+    if (p1 == null || p2 == null || _mapController == null) return;
+    
+    final southWest = LatLng(
+      math.min(p1.latitude, p2.latitude),
+      math.min(p1.longitude, p2.longitude),
     );
-    if (!ok) return;
+    final northEast = LatLng(
+      math.max(p1.latitude, p2.latitude),
+      math.max(p1.longitude, p2.longitude),
+    );
 
-    final last = await Geolocator.getLastKnownPosition();
-    if (last != null) {
-      _currentLocation = LatLng(last.latitude, last.longitude);
-      _updateMarkersAndRoute();
-      _mapController?.moveCamera(
-        CameraUpdate.newCameraPosition(
-          CameraPosition(target: _currentLocation!, zoom: 12),
-        ),
-      );
-      return;
-    }
-    await _initCurrentLocation(userInitiated: userInitiated);
-  }
-
-  void _updateMarkersAndRoute() {
-    setState(() {
-      _markers.clear();
-
-      if (_currentLocation != null) {
-        _markers.add(
-          Marker(
-            markerId: const MarkerId('current'),
-            position: _currentLocation!,
-            infoWindow: const InfoWindow(title: 'Mevcut Konumun'),
-            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
-          ),
-        );
-      }
-
-      if (_pickupLocation != null) {
-        _markers.add(
-          Marker(
-            markerId: const MarkerId('pickup'),
-            position: _pickupLocation!,
-            infoWindow: const InfoWindow(title: 'Alış Noktası'),
-            icon: _pickupMarkerIcon ??
-                BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
-          ),
-        );
-      }
-
-      if (_dropoffLocation != null) {
-        _markers.add(
-          Marker(
-            markerId: const MarkerId('dropoff'),
-            position: _dropoffLocation!,
-            infoWindow: const InfoWindow(title: 'Teslim Noktası'),
-            icon: _dropoffMarkerIcon ??
-                BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
-          ),
-        );
-      }
-
-      _polylines.clear();
-    });
-
-    if (_pickupLocation != null && _dropoffLocation != null) {
-      _drawRoute(_pickupLocation!, _dropoffLocation!);
-    }
-  }
-
-  Future<void> _drawRoute(LatLng origin, LatLng destination) async {
-    try {
-      assert(
-        GoogleApiKeys.mapsWebApiKey.isNotEmpty,
-        'Missing GOOGLE_MAPS_WEB_API_KEY (pass via --dart-define or --dart-define-from-file=dart_defines.json; hot restart will not pick it up).',
-      );
-      final response = await _dio.get(
-        'https://maps.googleapis.com/maps/api/directions/json',
-        queryParameters: <String, dynamic>{
-          'origin': '${origin.latitude},${origin.longitude}',
-          'destination': '${destination.latitude},${destination.longitude}',
-          'key': GoogleApiKeys.mapsWebApiKey,
-        },
-      );
-
-      final data = response.data is Map<String, dynamic>
-          ? response.data as Map<String, dynamic>
-          : jsonDecode(response.data as String) as Map<String, dynamic>;
-
-      final routes = data['routes'] as List<dynamic>?;
-      if (routes == null || routes.isEmpty) return;
-
-      final overviewPolyline = routes.first['overview_polyline']?['points']?.toString();
-      if (overviewPolyline == null) return;
-
-      final points = _decodePolyline(overviewPolyline);
-
-      setState(() {
-        _polylines
-          ..clear()
-          ..add(
-            Polyline(
-              polylineId: const PolylineId('route'),
-              color: Colors.blueAccent,
-              width: 5,
-              points: points,
-            ),
-          );
-      });
-
-      // İki noktayı aynı anda görebilmek için kamera sınırlarını ayarla
-      if (_mapController != null) {
-        final southWest = LatLng(
-          math.min(origin.latitude, destination.latitude),
-          math.min(origin.longitude, destination.longitude),
-        );
-        final northEast = LatLng(
-          math.max(origin.latitude, destination.latitude),
-          math.max(origin.longitude, destination.longitude),
-        );
-
-        final bounds = LatLngBounds(southwest: southWest, northeast: northEast);
-
-        await _mapController!.animateCamera(
-          CameraUpdate.newLatLngBounds(bounds, 60), // 60px padding
-        );
-      }
-    } catch (_) {
-      // Hata durumunda sessiz geç.
-    }
-  }
-
-  List<LatLng> _decodePolyline(String encoded) {
-    final List<LatLng> points = [];
-    int index = 0;
-    int lat = 0;
-    int lng = 0;
-
-    while (index < encoded.length) {
-      int b;
-      int shift = 0;
-      int result = 0;
-
-      do {
-        b = encoded.codeUnitAt(index++) - 63;
-        result |= (b & 0x1f) << shift;
-        shift += 5;
-      } while (b >= 0x20);
-
-      final int dlat = (result & 1) != 0 ? ~(result >> 1) : (result >> 1);
-      lat += dlat;
-
-      shift = 0;
-      result = 0;
-
-      do {
-        b = encoded.codeUnitAt(index++) - 63;
-        result |= (b & 0x1f) << shift;
-        shift += 5;
-      } while (b >= 0x20);
-
-      final int dlng = (result & 1) != 0 ? ~(result >> 1) : (result >> 1);
-      lng += dlng;
-
-      final double latitude = lat / 1e5;
-      final double longitude = lng / 1e5;
-      points.add(LatLng(latitude, longitude));
-    }
-
-    return points;
+    final bounds = LatLngBounds(southwest: southWest, northeast: northEast);
+    _mapController!.animateCamera(CameraUpdate.newLatLngBounds(bounds, 60));
   }
 }
