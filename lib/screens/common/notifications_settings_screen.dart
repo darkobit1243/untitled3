@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
-import '../services/app_settings.dart';
-import '../services/push_notifications.dart';
-import '../services/push_config.dart';
-import '../theme/bitasi_theme.dart';
+import '../../services/app_settings.dart';
+import '../../services/push_notifications.dart';
+import '../../services/push_config.dart';
+import '../../theme/bitasi_theme.dart';
 
 class NotificationsSettingsScreen extends StatefulWidget {
   const NotificationsSettingsScreen({super.key});

@@ -1,6 +1,4 @@
 // Kargo ilanı oluşturma + Google Maps / Places / Directions entegrasyonu
-
-import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -54,11 +52,11 @@ class _CreateShipmentScreenState extends ConsumerState<CreateShipmentScreen> {
       const markerSize = 56.0;
       const config = ImageConfiguration(size: Size(markerSize, markerSize));
 
-      final pickupIcon = await BitmapDescriptor.fromAssetImage(
+      final pickupIcon = await BitmapDescriptor.asset(
         config,
         'assets/markers/Alis_noktasi.png',
       );
-      final dropoffIcon = await BitmapDescriptor.fromAssetImage(
+      final dropoffIcon = await BitmapDescriptor.asset(
         config,
         'assets/markers/Varis_noktasi.png',
       );
@@ -329,6 +327,34 @@ class _CreateShipmentScreenState extends ConsumerState<CreateShipmentScreen> {
                             ),
                           ),
                         ),
+                        if (state.routeDistanceText != null || state.routeDurationText != null)
+                          Positioned(
+                            left: 12,
+                            bottom: 12,
+                            child: Material(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              elevation: 3,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    if (state.routeDistanceText != null)
+                                      Text(
+                                        'Mesafe: ${state.routeDistanceText}',
+                                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                                      ),
+                                    if (state.routeDurationText != null)
+                                      Text(
+                                        'Süre: ${state.routeDurationText}',
+                                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
                       ],
                     ),
                   ),

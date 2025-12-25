@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../theme/bitasi_theme.dart';
+import '../../theme/bitasi_theme.dart';
 
 class SecurityScreen extends StatefulWidget {
   const SecurityScreen({super.key});

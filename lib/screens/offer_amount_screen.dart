@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../theme/bitasi_theme.dart';
-import '../widgets/app_button.dart';
-import '../widgets/app_section_card.dart';
-import '../widgets/app_text_field.dart';
+import '../widgets/common/app_button.dart';
+import '../widgets/common/app_section_card.dart';
+import '../widgets/common/app_text_field.dart';
 
 class OfferAmountScreen extends StatefulWidget {
   const OfferAmountScreen({

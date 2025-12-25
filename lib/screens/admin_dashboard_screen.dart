@@ -246,13 +246,16 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> with Single
       onSelected: (sel) {
         if (sel) {
           setState(() {
-            if (isStatus) _filterStatus = value;
-            else _filterRole = value;
+            if (isStatus) {
+              _filterStatus = value;
+            } else {
+              _filterRole = value;
+            }
           });
           _loadUsers();
         }
       },
-      selectedColor: BiTasiColors.primaryRed.withOpacity(0.2),
+      selectedColor: BiTasiColors.primaryRed.withValues(alpha: 0.2),
       labelStyle: TextStyle(color: selected ? BiTasiColors.primaryRed : Colors.black),
     );
   }

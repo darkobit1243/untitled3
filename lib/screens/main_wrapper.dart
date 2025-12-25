@@ -3,7 +3,7 @@ import '../services/api_client.dart';
 import 'carrier/carrier_home_screen.dart';
 import 'sender/sender_home_screen.dart';
 import 'my_shipments_screen.dart';
-import 'profile_screen.dart';
+import 'common/profile_screen.dart';
 import 'carrier/carrier_deliveries_screen.dart';
 import 'chat/messages_screen.dart';
 

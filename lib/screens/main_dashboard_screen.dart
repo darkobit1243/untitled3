@@ -3,9 +3,9 @@ import 'package:flutter/material.dart';
 import '../services/api_client.dart';
 import '../theme/bitasi_theme.dart';
 import 'create_shipment_screen.dart';
-import 'deal_details_screen.dart';
+import 'common/deal_details_screen.dart';
 import 'my_shipments_screen.dart';
-import 'profile_screen.dart';
+import 'common/profile_screen.dart';
 import 'carrier/carrier_deliveries_screen.dart';
 
 enum DashboardMode { sender, carrier }

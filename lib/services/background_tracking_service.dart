@@ -16,6 +16,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 class BackgroundTrackingService {
   static const String _baseUrl = 'https://kargo-backend-production.up.railway.app';
   static const String _prefsDeliveryIdsKey = 'bg_tracking_delivery_ids_v1';
+  static const String _prefsAuthTokenKey = 'auth_token';
+  static const String _prefsRefreshTokenKey = 'refresh_token';
 
   static const int _notificationId = 9821;
   static const int _tickSeconds = 15;
@@ -78,11 +80,45 @@ class BackgroundTrackingService {
     required String token,
   }) async {
     final uri = Uri.parse('$_baseUrl/deliveries/$deliveryId/location');
-    await http.post(
+    final resp = await http.post(
       uri,
       headers: <String, String>{
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(<String, dynamic>{'lat': lat, 'lng': lng}),
+    );
+
+    if (resp.statusCode != 401) return;
+
+    // Token invalid/expired: best-effort refresh and retry once.
+    final prefs = await SharedPreferences.getInstance();
+    final refreshToken = prefs.getString(_prefsRefreshTokenKey);
+    if (refreshToken == null || refreshToken.trim().isEmpty) return;
+
+    final refreshResp = await http.post(
+      Uri.parse('$_baseUrl/auth/refresh'),
+      headers: const <String, String>{'Content-Type': 'application/json'},
+      body: jsonEncode(<String, dynamic>{'refreshToken': refreshToken.trim()}),
+    );
+    if (refreshResp.statusCode >= 400) return;
+
+    final data = jsonDecode(refreshResp.body);
+    if (data is! Map) return;
+    final newToken = (data['token'] as String?)?.trim();
+    final newRefresh = (data['refreshToken'] as String?)?.trim();
+    if (newToken == null || newToken.isEmpty) return;
+
+    await prefs.setString(_prefsAuthTokenKey, newToken);
+    if (newRefresh != null && newRefresh.isNotEmpty) {
+      await prefs.setString(_prefsRefreshTokenKey, newRefresh);
+    }
+
+    await http.post(
+      uri,
+      headers: <String, String>{
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $newToken',
       },
       body: jsonEncode(<String, dynamic>{'lat': lat, 'lng': lng}),
     );
@@ -132,7 +168,7 @@ Future<void> _bgTrackingOnStartAsync(ServiceInstance service) async {
     if (deliveryIds.isEmpty) return;
 
     final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('auth_token');
+    final token = prefs.getString(BackgroundTrackingService._prefsAuthTokenKey);
     if (token == null || token.isEmpty) return;
 
     try {

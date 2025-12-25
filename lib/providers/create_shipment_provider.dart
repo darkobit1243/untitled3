@@ -1,11 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 // import 'dart:math' as math; // Unused, removed
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart'; // Used for provider definition only
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:image_picker/image_picker.dart';
@@ -31,6 +31,12 @@ class CreateShipmentState {
   final Set<Polyline> polylines;
   final LatLng? currentLocation;
 
+  // Route metrics (from Google Directions)
+  final String? routeDistanceText;
+  final String? routeDurationText;
+  final int? routeDistanceMeters;
+  final int? routeDurationSeconds;
+
   CreateShipmentState({
     this.isLoading = false,
     this.errorMessage,
@@ -43,6 +49,10 @@ class CreateShipmentState {
     this.markers = const {},
     this.polylines = const {},
     this.currentLocation,
+    this.routeDistanceText,
+    this.routeDurationText,
+    this.routeDistanceMeters,
+    this.routeDurationSeconds,
   });
 
   CreateShipmentState copyWith({
@@ -57,6 +67,10 @@ class CreateShipmentState {
     Set<Marker>? markers,
     Set<Polyline>? polylines,
     LatLng? currentLocation,
+    String? routeDistanceText,
+    String? routeDurationText,
+    int? routeDistanceMeters,
+    int? routeDurationSeconds,
   }) {
     return CreateShipmentState(
       isLoading: isLoading ?? this.isLoading,
@@ -70,6 +84,10 @@ class CreateShipmentState {
       markers: markers ?? this.markers,
       polylines: polylines ?? this.polylines,
       currentLocation: currentLocation ?? this.currentLocation,
+      routeDistanceText: routeDistanceText,
+      routeDurationText: routeDurationText,
+      routeDistanceMeters: routeDistanceMeters,
+      routeDurationSeconds: routeDurationSeconds,
     );
   }
 }
@@ -159,7 +177,13 @@ class CreateShipmentNotifier extends StateNotifier<CreateShipmentState> {
 
   Future<void> _fetchRoute() async {
     if (state.pickupLocation == null || state.dropoffLocation == null) {
-      state = state.copyWith(polylines: {});
+      state = state.copyWith(
+        polylines: {},
+        routeDistanceText: null,
+        routeDurationText: null,
+        routeDistanceMeters: null,
+        routeDurationSeconds: null,
+      );
       return;
     }
 
@@ -185,7 +209,33 @@ class CreateShipmentNotifier extends StateNotifier<CreateShipmentState> {
       final routes = data['routes'] as List<dynamic>?;
       if (routes == null || routes.isEmpty) return;
 
-      final overviewPolyline = routes.first['overview_polyline']?['points']?.toString();
+      final firstRoute = routes.first;
+      String? distText;
+      String? durText;
+      int? distMeters;
+      int? durSeconds;
+      final legs = (firstRoute is Map ? firstRoute['legs'] : null) as List<dynamic>?;
+      if (legs != null && legs.isNotEmpty) {
+        final leg0 = legs.first;
+        if (leg0 is Map) {
+          final distance = leg0['distance'];
+          final duration = leg0['duration'];
+          if (distance is Map) {
+            distText = distance['text']?.toString();
+            final v = distance['value'];
+            if (v is num) distMeters = v.toInt();
+            distMeters ??= int.tryParse(v?.toString() ?? '');
+          }
+          if (duration is Map) {
+            durText = duration['text']?.toString();
+            final v = duration['value'];
+            if (v is num) durSeconds = v.toInt();
+            durSeconds ??= int.tryParse(v?.toString() ?? '');
+          }
+        }
+      }
+
+      final overviewPolyline = (firstRoute is Map ? firstRoute['overview_polyline'] : null)?['points']?.toString();
       if (overviewPolyline == null) return;
 
       final points = _decodePolyline(overviewPolyline);
@@ -197,7 +247,13 @@ class CreateShipmentNotifier extends StateNotifier<CreateShipmentState> {
         points: points,
       );
 
-      state =   state.copyWith(polylines: {polyline});
+      state = state.copyWith(
+        polylines: {polyline},
+        routeDistanceText: distText,
+        routeDurationText: durText,
+        routeDistanceMeters: distMeters,
+        routeDurationSeconds: durSeconds,
+      );
     } catch (_) {
       // Ignore route errors
     }
@@ -223,12 +279,12 @@ class CreateShipmentNotifier extends StateNotifier<CreateShipmentState> {
     state = state.copyWith(isLoading: true, errorMessage: null);
 
     try {
-      final photoDataUrl = await _buildPickedImageDataUrl(state.pickedImage!);
+      final uploadKey = await _uploadPickedImageToS3(state.pickedImage!);
       
       await apiClient.createListing(
         title: title,
         description: description,
-        photoDataUrl: photoDataUrl,
+        photos: <String>[uploadKey],
         weight: weight,
         receiverPhone: receiverPhone,
         pickupLat: state.pickupLocation!.latitude,
@@ -249,11 +305,37 @@ class CreateShipmentNotifier extends StateNotifier<CreateShipmentState> {
 
   // --- Helpers ---
 
-  Future<String> _buildPickedImageDataUrl(XFile picked) async {
-    final bytes = await File(picked.path).readAsBytes();
-    final b64 = base64Encode(bytes);
+  Future<String> _uploadPickedImageToS3(XFile picked) async {
+    final Uint8List bytes = await File(picked.path).readAsBytes();
     final mime = _inferMimeTypeFromPath(picked.path);
-    return 'data:$mime;base64,$b64';
+
+    final presign = await apiClient.presignUpload(
+      contentType: mime,
+      prefix: 'listings',
+    );
+
+    final url = presign['url']?.toString();
+    final key = presign['key']?.toString();
+    final rawHeaders = presign['headers'];
+
+    if (url == null || url.isEmpty || key == null || key.isEmpty) {
+      throw Exception('Upload URL yanıtı geçersiz.');
+    }
+
+    final headers = <String, String>{};
+    if (rawHeaders is Map) {
+      for (final entry in rawHeaders.entries) {
+        final k = entry.key?.toString();
+        final v = entry.value?.toString();
+        if (k != null && v != null) headers[k] = v;
+      }
+    }
+    if (!headers.containsKey('Content-Type')) {
+      headers['Content-Type'] = mime;
+    }
+
+    await apiClient.uploadToPresignedUrl(url: url, bytes: bytes, headers: headers);
+    return key;
   }
 
   String _inferMimeTypeFromPath(String path) {

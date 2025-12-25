@@ -1,5 +1,5 @@
-import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -12,9 +12,9 @@ import '../../services/push_notifications.dart';
 import '../../services/tr_location_assets.dart';
 import '../../theme/app_ui.dart';
 import '../../theme/bitasi_theme.dart';
-import '../../widgets/app_button.dart';
-import '../../widgets/app_section_card.dart';
-import '../../widgets/app_text_field.dart';
+import '../../widgets/common/app_button.dart';
+import '../../widgets/common/app_section_card.dart';
+import '../../widgets/common/app_text_field.dart';
 import '../main_wrapper.dart';
 import 'sender_welcome_loading_screen.dart';
 
@@ -132,15 +132,42 @@ class _SenderCompanyInfoScreenState extends State<SenderCompanyInfoScreen> {
     return 'image/jpeg';
   }
 
-  Future<String> _buildPickedAvatarDataUrl() async {
+  Future<String> _uploadPickedAvatarToS3() async {
     final picked = _pickedAvatar;
     if (picked == null) {
       throw StateError('picked avatar is null');
     }
-    final bytes = await File(picked.path).readAsBytes();
-    final b64 = base64Encode(bytes);
+
+    final Uint8List bytes = await File(picked.path).readAsBytes();
     final mime = _inferMimeTypeFromPath(picked.path);
-    return 'data:$mime;base64,$b64';
+
+    final presign = await apiClient.presignUpload(
+      contentType: mime,
+      prefix: 'avatars',
+    );
+
+    final url = presign['url']?.toString();
+    final key = presign['key']?.toString();
+    final rawHeaders = presign['headers'];
+
+    if (url == null || url.isEmpty || key == null || key.isEmpty) {
+      throw Exception('Upload URL yanıtı geçersiz.');
+    }
+
+    final headers = <String, String>{};
+    if (rawHeaders is Map) {
+      for (final entry in rawHeaders.entries) {
+        final k = entry.key?.toString();
+        final v = entry.value?.toString();
+        if (k != null && v != null) headers[k] = v;
+      }
+    }
+    if (!headers.containsKey('Content-Type')) {
+      headers['Content-Type'] = mime;
+    }
+
+    await apiClient.uploadToPresignedUrl(url: url, bytes: bytes, headers: headers);
+    return key;
   }
 
   Future<void> _pickAvatarFromGallery() async {
@@ -213,7 +240,7 @@ class _SenderCompanyInfoScreenState extends State<SenderCompanyInfoScreen> {
     });
 
     try {
-      final avatarDataUrl = await _buildPickedAvatarDataUrl();
+      final avatarKey = await _uploadPickedAvatarToS3();
 
       String? cityName;
       for (final c in _cities) {
@@ -241,8 +268,8 @@ class _SenderCompanyInfoScreenState extends State<SenderCompanyInfoScreen> {
         // Backward-compatible field name (backend currently expects taxOffice string).
         'taxOffice': '${cityName ?? ''}/${districtName ?? ''}'.trim(),
         'activityArea': _activityArea,
-        // Backend'de avatarUrl string olarak saklanıyor. Şimdilik data-url göndereceğiz.
-        'avatarUrl': avatarDataUrl,
+        // Private S3: store object key, backend returns signed GET URL.
+        'avatarUrl': avatarKey,
       };
 
       await apiClient.registerWithFirebaseIdToken(

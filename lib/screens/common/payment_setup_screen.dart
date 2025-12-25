@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../theme/bitasi_theme.dart';
+import '../../theme/bitasi_theme.dart';
 
 class PaymentSetupScreen extends StatefulWidget {
   const PaymentSetupScreen({super.key});

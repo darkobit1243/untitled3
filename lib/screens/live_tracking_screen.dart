@@ -29,6 +29,8 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
   late Animation<double> _anim;
   LatLng? _currentMarkerPosition; // Ekranda görünen (animasyonlu) konum
   LatLng? _targetMarkerPosition;  // Backend'den gelen son hedef
+  LatLng? _animationStartPos;
+  int _lastAnimBucket = -1;
 
   static const String _kCarrierMarkerAssetPath = 'assets/markers/kamyon_marker.png';
 
@@ -41,19 +43,33 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
         vsync: this, duration: const Duration(seconds: 2));
     _anim = CurvedAnimation(parent: _animController, curve: Curves.linear);
 
+    _animController.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        if (!mounted) return;
+        setState(() {
+          _currentMarkerPosition = _targetMarkerPosition;
+          _animationStartPos = null;
+        });
+      }
+    });
+
     _animController.addListener(() {
       if (_currentMarkerPosition != null && _targetMarkerPosition != null) {
-        final start = _currentMarkerPosition!;
+        final start = _animationStartPos ?? _currentMarkerPosition!;
         final end = _targetMarkerPosition!;
         final t = _anim.value;
+
+        // GoogleMap rebuild'i pahalı; her frame setState yapma.
+        // 2sn animasyonda ~10 adım yeterli görsel akıcılık sağlar.
+        final bucket = (t * 10).floor();
+        if (bucket == _lastAnimBucket) return;
+        _lastAnimBucket = bucket;
         
         // Ara değeri hesapla
         final lat = start.latitude + (end.latitude - start.latitude) * t;
         final lng = start.longitude + (end.longitude - start.longitude) * t;
         
-        setState(() {
-          _currentMarkerPosition = LatLng(lat, lng);
-        });
+        setState(() => _currentMarkerPosition = LatLng(lat, lng));
         
         // Hafifçe kamerayı da odakla (kullanıcı etkileşimdeyse iptal edilebilir ama basitlik için)
         // _moveCameraIfPossible(); -> Her frame'de kamera oynatmak kullanıcıyı yorar,
@@ -111,44 +127,9 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
 
     final newTarget = LatLng(lat, lng);
 
-    if (mounted) {
-      if (_currentMarkerPosition == null) {
-        // İlk kez konum geldi, direkt setle
-        setState(() {
-          _delivery = data;
-          _loading = false;
-          _currentMarkerPosition = newTarget;
-          _targetMarkerPosition = newTarget;
-        });
-        _moveCameraIfPossible(newTarget);
-      } else {
-        // Zaten konum vardı, animasyon başlat
-        // Animasyon başlangıç noktası şu anki _currentMarkerPosition (animasyon yarıda kesildiyse oradan devam etmeli)
-        // Ancak Tween yapısını basit tutmak için şöyle yapıyoruz:
-        // Her tick'te _currentMarkerPosition güncellendiği için,
-        // sadece animasyonu resetleyip start ve end'i yönetmemiz gerek.
-        // Ama standart Tween sabit start/end ister.
-        // Burada manuel lerp (linear interpolation) yapıyoruz addListener içinde.
-        // O yüzden sadece _targetMarkerPosition'ı güncellemek yetmez,
-        // Başlangıç noktasını sabitlemek lazım mı? 
-        // Logic: 
-        // 1. Animasyon bitmediyse bile şu anki _currentMarkerPosition geçerli konumdur.
-        // 2. Yeni hedef belirlenir.
-        // 3. Controller 0'dan restart edilir.
-        // Ancak addListener içindeki `start` değeri sabit kalmalı. Bu yüzden `_animationStartPos` diye bir field lazım.
-        
-        // Hata: initState içindeki listener `_currentMarkerPosition` 'ı start olarak alırsa,
-        // her frame'de start değişir ve Zeno paradoksu oluşur (hiç varmaz).
-        // Doğrusu: Bir sonraki frame için start'ı sabitlemeliyiz.
-      }
-    }
-    
-    // YENİ MANTIK ÇAĞRISI (Aşağıdaki _animateTo metodunu kullanır)
+    // Tek yerden state güncelle: double setState'ten kaçın.
     _animateTo(data, newTarget);
   }
-
-  // Animasyon state değişkeni
-  LatLng? _animationStartPos;
 
   void _animateTo(Map<String, dynamic> newData, LatLng newTarget) {
      setState(() {
@@ -158,25 +139,18 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
        if (_currentMarkerPosition == null) {
          _currentMarkerPosition = newTarget;
          _targetMarkerPosition = newTarget;
+         _lastAnimBucket = -1;
          _moveCameraIfPossible(newTarget);
        } else {
          // Animasyon başlat
          _animationStartPos = _currentMarkerPosition;
          _targetMarkerPosition = newTarget;
+         _lastAnimBucket = -1;
          _animController.reset();
          _animController.forward();
-         _moveCameraIfPossible(newTarget);
        }
      });
   }
-
-  // InitState içindeki listener'ı düzeltmek için override gerekliydi ama 
-  // initstate'i yukarıda tanımladık. Orayı revize edelim:
-  // _animController listener'ını "lat = start + (end-start)*t" mantığına göre kuracağız.
-  // start = _animationStartPos, end = _targetMarkerPosition.
-  
-  // Not: replace_file_content ile bu class'ın tamamını güncelleyeceğim,
-  // bu yüzden iç metodları şimdi düzgün yazıyorum.
 
   void _moveCameraIfPossible(LatLng target) {
     _mapController?.animateCamera(

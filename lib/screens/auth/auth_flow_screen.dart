@@ -5,23 +5,18 @@
 // 2) Seçilen role göre basit kayıt formu
 // Kayıttan sonra otomatik login yapıp MainWrapper'a yönlendirir.
 
-import 'dart:math';
-
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../services/api_client.dart';
 import '../../services/app_settings.dart';
 import '../../services/local_notifications.dart';
 import '../../services/push_config.dart';
 import '../../services/push_notifications.dart';
-import '../../theme/app_ui.dart';
-import '../../theme/bitasi_theme.dart';
-import '../../widgets/app_button.dart';
-import '../../widgets/app_section_card.dart';
-import '../../widgets/app_text_field.dart';
+import '../../utils/auth_flow/auth_flow_helpers.dart';
+import '../../widgets/auth_flow/registration_form_view.dart';
+import '../../widgets/auth_flow/role_selection_view.dart';
 import '../main_wrapper.dart';
 import 'otp_verification_screen.dart';
 import '../sender/sender_company_info_screen.dart';
@@ -79,30 +74,7 @@ class _AuthFlowScreenState extends State<AuthFlowScreen> {
   @override
   void initState() {
     super.initState();
-    _phoneHint = _buildRandomTrPhoneHint();
-  }
-
-  String _friendlyFirebaseAuthError(FirebaseAuthException e) {
-    // Common Firebase Phone Auth errors.
-    switch (e.code) {
-      case 'billing-not-enabled':
-        return 'SMS doğrulama için Firebase projesinde faturalandırma (Blaze) gerekir.\n\nSadece test amaçlıysa: Firebase Console > Authentication > Sign-in method > Phone > Test phone numbers kısmından test numarası ekleyip onunla deneyin.';
-      case 'quota-exceeded':
-        return 'SMS kotası aşıldı. Bir süre bekleyip tekrar deneyin.\n\nTest için: Firebase Console > Authentication > Phone > Test phone numbers.';
-      case 'invalid-phone-number':
-        return 'Telefon numarası geçersiz. 10 haneli 5xxxxxxxxx formatında gir.';
-      case 'too-many-requests':
-        return 'Çok fazla deneme yapıldı. Lütfen biraz bekleyip tekrar deneyin.';
-      case 'captcha-check-failed':
-      case 'invalid-app-credential':
-      case 'app-not-authorized':
-      case 'missing-client-identifier':
-        return 'Uygulama doğrulanamadı (Play Integrity / reCAPTCHA).\n\nÇözüm: Firebase Console > Project settings > Android app (com.example.untitled) içine SHA-1 ve SHA-256 ekle, sonra yeni google-services.json indirip projeye koy. Google Cloud’da Play Integrity API açık olsun.\n\nDetay: ${e.code}: ${e.message ?? ''}'.trim();
-      default:
-        final msg = (e.message ?? '').trim();
-        if (msg.isEmpty) return 'SMS doğrulama başlatılamadı. (${e.code})';
-        return '${e.code}: $msg';
-    }
+    _phoneHint = buildRandomTrPhoneHint();
   }
 
   @override
@@ -169,351 +141,64 @@ class _AuthFlowScreenState extends State<AuthFlowScreen> {
   }
 
   Widget _buildRoleSelection() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Nasıl kullanmak istiyorsun?',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Gönderici olarak kargo çıkabilir veya taşıyıcı olarak yolculuklarında ek gelir elde edebilirsin.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13, color: Colors.grey),
-            ),
-            const SizedBox(height: 32),
-            _roleCard(
-              icon: Icons.send_outlined,
-              title: 'Gönderici',
-              description: 'Paketlerini farklı şehirlere güvenle gönder.',
-              color: BiTasiColors.primaryRed,
-              onTap: () {
-                setState(() {
-                  _currentView = AuthView.senderRegistration;
-                });
-              },
-            ),
-            const SizedBox(height: 16),
-            _roleCard(
-              icon: Icons.directions_car,
-              title: 'Taşıyıcı',
-              description: 'Yolculuklarını kazanca çevir, kargo taşı.',
-              color: BiTasiColors.successGreen,
-              onTap: () {
-                setState(() {
-                  _currentView = AuthView.carrierRegistration;
-                });
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _roleCard({
-    required IconData icon,
-    required String title,
-    required String description,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(18),
-      onTap: onTap,
-      child: Ink(
-        decoration: BoxDecoration(
-          color: color.withAlpha(15),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: color.withAlpha(89)),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-          child: Row(
-            children: [
-              CircleAvatar(
-                radius: 22,
-                backgroundColor: color.withAlpha(31),
-                child: Icon(icon, color: color),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      description,
-                      style: const TextStyle(fontSize: 12, color: Colors.grey),
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(Icons.chevron_right),
-            ],
-          ),
-        ),
-      ),
+    return AuthRoleSelectionView(
+      onSelectSender: () {
+        setState(() {
+          _currentView = AuthView.senderRegistration;
+        });
+      },
+      onSelectCarrier: () {
+        setState(() {
+          _currentView = AuthView.carrierRegistration;
+        });
+      },
     );
   }
 
   Widget _buildRegistrationForm({required String role}) {
     final isSender = role == 'sender';
 
-    return SingleChildScrollView(
-      controller: _scrollController,
-      padding: const EdgeInsets.all(24),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 420),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              TextButton.icon(
-                onPressed: () {
-                  setState(() {
-                    _currentView = AuthView.roleSelection;
-                    _error = null;
-                  });
-                },
-                icon: const Icon(Icons.arrow_back_ios_new, size: 14),
-                label: const Text('Geri'),
-                style: TextButton.styleFrom(
-                  padding: EdgeInsets.zero,
-                  alignment: Alignment.centerLeft,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                isSender ? 'Gönderici Kaydı' : 'Taşıyıcı Kaydı',
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                isSender
-                    ? 'Paket göndermek için hızlıca bir hesap oluştur.'
-                    : 'Yolculuklarında kargo taşıyıp gelir elde etmek için kayıt ol.',
-                style: const TextStyle(fontSize: 13, color: Colors.grey),
-              ),
-              const SizedBox(height: 20),
-              if (_error != null) ...[
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  margin: const EdgeInsets.only(bottom: 12),
-                  decoration: BoxDecoration(
-                    color: Colors.red.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.red.shade200),
-                  ),
-                  child: Text(
-                    _error!,
-                    style: const TextStyle(color: Colors.red, fontSize: 13),
-                  ),
-                ),
-              ],
-              AppSectionCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Container(
-                      key: _kFirstName,
-                      child: AppTextField(
-                        label: 'İsim',
-                        controller: _firstNameController,
-                        hintText: 'Adınız (örn: Ahmet Can)',
-                        prefixIcon: Icons.person_outline,
-                        textCapitalization: TextCapitalization.words,
-                        inputFormatters: const [TrNameFormatter()],
-                        enabled: !_isLoading,
-                        textInputAction: TextInputAction.next,
-                        focusNode: _firstNameFocus,
-                        nextFocusNode: _lastNameFocus,
-                        onChanged: (_) {
-                          if (_error != null) setState(() => _error = null);
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: AppSpace.md),
-                    Container(
-                      key: _kLastName,
-                      child: AppTextField(
-                        label: 'Soyad',
-                        controller: _lastNameController,
-                        hintText: 'Soyadınız',
-                        prefixIcon: Icons.badge_outlined,
-                        textCapitalization: TextCapitalization.words,
-                        inputFormatters: const [TrNameFormatter()],
-                        enabled: !_isLoading,
-                        textInputAction: TextInputAction.next,
-                        focusNode: _lastNameFocus,
-                        nextFocusNode: _emailFocus,
-                        onChanged: (_) {
-                          if (_error != null) setState(() => _error = null);
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: AppSpace.md),
-                    Container(
-                      key: _kEmail,
-                      child: AppTextField(
-                        label: 'E-posta',
-                        controller: _emailController,
-                        hintText: 'ornek@eposta.com',
-                        prefixIcon: Icons.email_outlined,
-                        keyboardType: TextInputType.emailAddress,
-                        enabled: !_isLoading,
-                        textInputAction: TextInputAction.next,
-                        focusNode: _emailFocus,
-                        nextFocusNode: _passwordFocus,
-                        onChanged: (_) {
-                          if (_error != null) setState(() => _error = null);
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: AppSpace.md),
-                    Container(
-                      key: _kPassword,
-                      child: AppTextField(
-                        label: 'Şifre',
-                        controller: _passwordController,
-                        hintText: 'En az 6 karakter',
-                        prefixIcon: Icons.lock_outline,
-                        obscureText: true,
-                        enabled: !_isLoading,
-                        textInputAction: TextInputAction.next,
-                        focusNode: _passwordFocus,
-                        nextFocusNode: _passwordConfirmFocus,
-                      ),
-                    ),
-                    const SizedBox(height: AppSpace.md),
-                    Container(
-                      key: _kPasswordConfirm,
-                      child: AppTextField(
-                        label: 'Şifre (Tekrar)',
-                        controller: _passwordConfirmController,
-                        hintText: 'Şifreni tekrar gir',
-                        prefixIcon: Icons.lock_outline,
-                        obscureText: true,
-                        enabled: !_isLoading,
-                        textInputAction: TextInputAction.next,
-                        focusNode: _passwordConfirmFocus,
-                        nextFocusNode: _phoneFocus,
-                      ),
-                    ),
-                    const SizedBox(height: AppSpace.lg),
-                    Container(
-                      key: _kPhone,
-                      child: _buildCommonFields(),
-                    ),
-                    const SizedBox(height: AppSpace.lg),
-                    if (!isSender) ...[
-                      Container(key: _kVehicleType, child: _buildCarrierFields()),
-                      const SizedBox(height: AppSpace.lg),
-                    ],
-                    AppButton.primary(
-                      label: 'Kayıt Ol',
-                      isLoading: _isLoading,
-                      onPressed: _isLoading ? null : () => _handleRegister(role),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCommonFields() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        AppTextField(
-          label: 'Telefon',
-          controller: _phoneController,
-          hintText: _phoneHint,
-          prefixIcon: Icons.phone_outlined,
-          keyboardType: TextInputType.phone,
-          inputFormatters: const [TrPhoneHyphenFormatter()],
-          enabled: !_isLoading,
-          textInputAction: TextInputAction.done,
-          focusNode: _phoneFocus,
-        ),
-      ],
-    );
-  }
-
-  String _buildRandomTrPhoneHint() {
-    // 10 hane TR GSM: 5xxxxxxxxx
-    final rnd = Random();
-    final digits = StringBuffer('5');
-    for (var i = 0; i < 9; i++) {
-      digits.write(rnd.nextInt(10));
-    }
-    final raw = digits.toString();
-    return '${raw.substring(0, 3)}-${raw.substring(3, 6)}-${raw.substring(6)}';
-  }
-
-  Widget _buildCarrierFields() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          key: _kVehicleType,
-          child: AppTextField(
-            label: 'Araç Tipi',
-            controller: _carrierVehicleTypeController,
-            hintText: 'Otomobil, panelvan, kamyonet vb.',
-            prefixIcon: Icons.local_shipping_outlined,
-            enabled: !_isLoading,
-            textInputAction: TextInputAction.next,
-            focusNode: _vehicleTypeFocus,
-            nextFocusNode: _vehiclePlateFocus,
-          ),
-        ),
-        const SizedBox(height: AppSpace.md),
-        Container(
-          key: _kVehiclePlate,
-          child: AppTextField(
-            label: 'Araç Plakası',
-            controller: _carrierVehiclePlateController,
-            hintText: '34ABC34',
-            prefixIcon: Icons.badge_outlined,
-            textCapitalization: TextCapitalization.characters,
-            enabled: !_isLoading,
-            textInputAction: TextInputAction.next,
-            focusNode: _vehiclePlateFocus,
-          ),
-        ),
-        const SizedBox(height: AppSpace.md),
-        AppTextField(
-          label: 'Servis Bölgesi',
-          controller: _carrierServiceAreaController,
-          hintText: 'Çalıştığınız şehir / gece rotası',
-          prefixIcon: Icons.public,
-          enabled: !_isLoading,
-          textInputAction: TextInputAction.done,
-        ),
-      ],
+    return AuthRegistrationFormView(
+      isSender: isSender,
+      scrollController: _scrollController,
+      error: _error,
+      isLoading: _isLoading,
+      onBack: () {
+        setState(() {
+          _currentView = AuthView.roleSelection;
+          _error = null;
+        });
+      },
+      onSubmit: () => _handleRegister(role),
+      onAnyFieldChanged: () {
+        if (_error != null) setState(() => _error = null);
+      },
+      firstNameController: _firstNameController,
+      lastNameController: _lastNameController,
+      emailController: _emailController,
+      passwordController: _passwordController,
+      passwordConfirmController: _passwordConfirmController,
+      phoneController: _phoneController,
+      carrierVehicleTypeController: _carrierVehicleTypeController,
+      carrierVehiclePlateController: _carrierVehiclePlateController,
+      carrierServiceAreaController: _carrierServiceAreaController,
+      kFirstName: _kFirstName,
+      kLastName: _kLastName,
+      kEmail: _kEmail,
+      kPassword: _kPassword,
+      kPasswordConfirm: _kPasswordConfirm,
+      kPhone: _kPhone,
+      kVehicleType: _kVehicleType,
+      kVehiclePlate: _kVehiclePlate,
+      firstNameFocus: _firstNameFocus,
+      lastNameFocus: _lastNameFocus,
+      emailFocus: _emailFocus,
+      passwordFocus: _passwordFocus,
+      passwordConfirmFocus: _passwordConfirmFocus,
+      phoneFocus: _phoneFocus,
+      vehicleTypeFocus: _vehicleTypeFocus,
+      vehiclePlateFocus: _vehiclePlateFocus,
+      phoneHint: _phoneHint,
     );
   }
 
@@ -524,7 +209,7 @@ class _AuthFlowScreenState extends State<AuthFlowScreen> {
     final firstName = _firstNameController.text.trim();
     final lastName = _lastNameController.text.trim();
     final fullName = '$firstName $lastName'.trim();
-    final phone = _normalizePhone(_phoneController.text);
+    final phone = normalizeTrPhoneToE164(_phoneController.text);
 
     if (email.isEmpty) {
       setState(() {
@@ -620,36 +305,6 @@ class _AuthFlowScreenState extends State<AuthFlowScreen> {
     }
   }
 
-  String? _normalizePhone(String raw) {
-    final trimmed = raw.trim();
-    if (trimmed.isEmpty) return null;
-
-    // TR için kullanıcı genelde "544-567-5582" gibi girer.
-    // Tire/boşluk/parantez vs. temizle, sadece rakamları al.
-    var digits = trimmed.replaceAll(RegExp(r'\D'), '');
-    if (digits.isEmpty) return null;
-
-    // Kabul edilen girişler:
-    // - 10 hane: 5xxxxxxxxx  -> +90
-    // - 11 hane: 05xxxxxxxxx -> +90
-    // - 12 hane: 90 + 10 hane -> +90
-    // - E.164 girilmişse (+90...) zaten digits=90...
-
-    if (digits.length == 11 && digits.startsWith('0')) {
-      digits = digits.substring(1);
-    }
-    if (digits.length == 12 && digits.startsWith('90')) {
-      digits = digits.substring(2);
-    }
-
-    // TR GSM numarası 10 hane ve 5 ile başlar.
-    if (digits.length != 10 || !digits.startsWith('5')) {
-      return null;
-    }
-
-    return '+90$digits';
-  }
-
   Future<void> _startPhoneVerification({
     required String role,
     required String? email,
@@ -741,7 +396,7 @@ class _AuthFlowScreenState extends State<AuthFlowScreen> {
       verificationFailed: (FirebaseAuthException e) {
         if (!mounted) return;
         setState(() {
-          _error = _friendlyFirebaseAuthError(e);
+          _error = friendlyFirebaseAuthError(e);
         });
       },
       codeSent: (String verificationId, int? resendToken) {
@@ -767,94 +422,4 @@ class _AuthFlowScreenState extends State<AuthFlowScreen> {
     );
   }
 }
-
-class TrNameFormatter extends TextInputFormatter {
-  const TrNameFormatter();
-
-  String _upperTr(String s) {
-    if (s.isEmpty) return s;
-    return s
-        .replaceAll('i', 'İ')
-        .replaceAll('ı', 'I')
-        .toUpperCase();
-  }
-
-  String _lowerTr(String s) {
-    if (s.isEmpty) return s;
-    return s
-        .replaceAll('I', 'ı')
-        .replaceAll('İ', 'i')
-        .toLowerCase();
-  }
-
-  String _toNameCase(String input) {
-    final endsWithSpace = input.isNotEmpty && RegExp(r'\s$').hasMatch(input);
-    final normalized = input.replaceAll(RegExp(r'\s+'), ' ').trimLeft();
-    if (normalized.isEmpty) return '';
-
-    final parts = normalized.split(' ');
-    final cased = parts.map((p) {
-      final word = p.trim();
-      if (word.isEmpty) return '';
-      if (word.length == 1) return _upperTr(word);
-      final first = _upperTr(word[0]);
-      final rest = _lowerTr(word.substring(1));
-      return '$first$rest';
-    }).where((p) => p.isNotEmpty);
-    final result = cased.join(' ');
-
-    // Kullanıcı ikinci isme geçmek için boşluk yazdığında, formatter boşluğu anında
-    // silmesin; tek bir trailing boşluğu koru.
-    if (endsWithSpace && result.isNotEmpty) {
-      return '$result ';
-    }
-    return result;
-  }
-
-  @override
-  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
-    final formatted = _toNameCase(newValue.text);
-    return TextEditingValue(
-      text: formatted,
-      selection: TextSelection.collapsed(offset: formatted.length),
-    );
-  }
-}
-
-/// Turkish phone input formatter that auto-inserts hyphens in 3-3-4 format.
-///
-/// User types digits only; formatter displays like: 544-567-5582.
-class TrPhoneHyphenFormatter extends TextInputFormatter {
-  const TrPhoneHyphenFormatter();
-
-  @override
-  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
-    var digits = newValue.text.replaceAll(RegExp(r'\D'), '');
-    if (digits.length > 10) {
-      digits = digits.substring(0, 10);
-    }
-
-    // TR GSM numbers should start with 5 (e.g., 5xxxxxxxxx). If user starts with
-    // something else, force it to 5.
-    if (digits.isNotEmpty && digits[0] != '5') {
-      digits = digits.length == 1 ? '5' : '5${digits.substring(1)}';
-    }
-
-    final formatted = _format(digits);
-    return TextEditingValue(
-      text: formatted,
-      selection: TextSelection.collapsed(offset: formatted.length),
-    );
-  }
-
-  String _format(String digits) {
-    if (digits.isEmpty) return '';
-    if (digits.length <= 3) return digits;
-    if (digits.length <= 6) {
-      return '${digits.substring(0, 3)}-${digits.substring(3)}';
-    }
-    return '${digits.substring(0, 3)}-${digits.substring(3, 6)}-${digits.substring(6)}';
-  }
-}
-
 

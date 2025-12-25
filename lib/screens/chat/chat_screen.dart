@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/message_model.dart';
 import '../../services/chat_api_service.dart';
 import '../../services/chat_socket_service.dart';
-import '../../widgets/chat_message_bubble.dart';
+import '../../widgets/chat/chat_message_bubble.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({

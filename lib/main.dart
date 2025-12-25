@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'dart:ui';
@@ -58,11 +59,13 @@ Future<void> main() async {
   // FCM token'ı alıp konsola yazdır
   try {
     String? token = await FirebaseMessaging.instance.getToken();
-    print('---------------------------------------');
-    print('BULDUM LAN TOKENI: $token');
-    print('---------------------------------------');
+    if (kDebugMode) {
+      debugPrint('FCM token: $token');
+    }
   } catch (e) {
-    print('TOKEN ALIRKEN PATLADIK: $e');
+    if (kDebugMode) {
+      debugPrint('FCM token alınamadı: $e');
+    }
   }
 
   if (kEnableFirebasePush) {

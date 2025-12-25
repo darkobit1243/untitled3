@@ -1,16 +1,20 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
-import '../services/api_client.dart';
-import '../services/background_tracking_service.dart';
-import '../services/app_settings.dart';
-import '../theme/bitasi_theme.dart';
-import 'auth/login_screen.dart';
+import '../../services/api_client.dart';
+import '../../services/background_tracking_service.dart';
+import '../../services/app_settings.dart';
+import '../../theme/bitasi_theme.dart';
+import '../admin_dashboard_screen.dart';
+import '../auth/login_screen.dart';
+import '../vehicle_info_screen.dart';
 import 'notifications_settings_screen.dart';
 import 'payment_setup_screen.dart';
 import 'security_screen.dart';
-import 'admin_dashboard_screen.dart';
+import 'support_faq_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -21,11 +25,89 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   bool _loading = true;
+  bool _avatarUploading = false;
   Map<String, dynamic>? _profile;
   int _myListingsCount = 0;
   int _carrierDeliveriesCount = 0;
   String _preferredRole = 'sender';
   bool _notificationsEnabled = true;
+
+  String _inferMimeTypeFromPath(String path) {
+    final lower = path.toLowerCase();
+    if (lower.endsWith('.png')) return 'image/png';
+    if (lower.endsWith('.webp')) return 'image/webp';
+    return 'image/jpeg';
+  }
+
+  Future<void> _changeAvatar() async {
+    if (_avatarUploading) return;
+
+    setState(() {
+      _avatarUploading = true;
+    });
+
+    try {
+      final picker = ImagePicker();
+      final XFile? picked = await picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 85,
+      );
+      if (picked == null) return;
+
+      final Uint8List bytes = await picked.readAsBytes();
+      final mime = _inferMimeTypeFromPath(picked.path);
+
+      final presign = await apiClient.presignUpload(
+        contentType: mime,
+        prefix: 'avatars',
+      );
+      final url = presign['url']?.toString();
+      final key = presign['key']?.toString();
+      final rawHeaders = presign['headers'];
+
+      if (url == null || url.isEmpty || key == null || key.isEmpty) {
+        throw Exception('Upload URL yanıtı geçersiz.');
+      }
+
+      final headers = <String, String>{};
+      if (rawHeaders is Map) {
+        for (final entry in rawHeaders.entries) {
+          final k = entry.key?.toString();
+          final v = entry.value?.toString();
+          if (k != null && v != null) headers[k] = v;
+        }
+      }
+      if (!headers.containsKey('Content-Type')) {
+        headers['Content-Type'] = mime;
+      }
+
+      await apiClient.uploadToPresignedUrl(url: url, bytes: bytes, headers: headers);
+
+      final updated = await apiClient.updateMyProfile(avatarUrl: key);
+
+      if (!mounted) return;
+      setState(() {
+        _profile = updated;
+        final roleValue = updated['role'];
+        _preferredRole = (roleValue is String && roleValue.isNotEmpty) ? roleValue : _preferredRole;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Profil fotoğrafı güncellendi.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Profil fotoğrafı güncellenemedi: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _avatarUploading = false;
+        });
+      }
+    }
+  }
 
   @override
   void initState() {
@@ -64,12 +146,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final profile = await apiClient.getProfile();
       final roleValue = profile['role'];
       final isCarrier = roleValue is String && roleValue == 'carrier';
-      final myListingsFuture = isCarrier
-          ? Future.value(<dynamic>[])
-          : _safeMyListings();
-      final carrierDeliveriesFuture = isCarrier
-          ? _safeCarrierDeliveries()
-          : Future.value(<dynamic>[]);
+      final myListingsFuture = isCarrier ? Future.value(<dynamic>[]) : _safeMyListings();
+      final carrierDeliveriesFuture = isCarrier ? _safeCarrierDeliveries() : Future.value(<dynamic>[]);
 
       final results = await Future.wait([
         myListingsFuture,
@@ -88,9 +166,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final isForbidden = e.toString().contains('403');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(isForbidden
-              ? 'Yetersiz izin: Taşıyıcı verisi alınamadı.'
-              : 'Profil bilgileri alınamadı: $e'),
+          content: Text(isForbidden ? 'Yetersiz izin: Taşıyıcı verisi alınamadı.' : 'Profil bilgileri alınamadı: $e'),
         ),
       );
     } finally {
@@ -124,9 +200,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
-            _loading
-                ? const Center(child: CircularProgressIndicator())
-                : _buildProfileCard(email, userId),
+            _loading ? const Center(child: CircularProgressIndicator()) : _buildProfileCard(email, userId),
             const SizedBox(height: 24),
             const Text(
               'Özet',
@@ -218,13 +292,53 @@ class _ProfileScreenState extends State<ProfileScreen> {
           padding: const EdgeInsets.all(18),
           child: Row(
             children: [
-              CircleAvatar(
-                radius: 44,
-                backgroundColor: BiTasiColors.backgroundGrey,
-                backgroundImage: avatarProvider,
-                child: avatarProvider == null
-                    ? const Icon(Icons.person, color: BiTasiColors.primaryRed, size: 32)
-                    : null,
+              GestureDetector(
+                onTap: _avatarUploading ? null : _changeAvatar,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    CircleAvatar(
+                      radius: 44,
+                      backgroundColor: BiTasiColors.backgroundGrey,
+                      backgroundImage: avatarProvider,
+                      child: avatarProvider == null
+                          ? const Icon(Icons.person, color: BiTasiColors.primaryRed, size: 32)
+                          : null,
+                    ),
+                    Positioned(
+                      right: 2,
+                      bottom: 2,
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withAlpha(140),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          _avatarUploading ? Icons.hourglass_top : Icons.camera_alt,
+                          size: 16,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    if (_avatarUploading)
+                      Container(
+                        width: 88,
+                        height: 88,
+                        decoration: BoxDecoration(
+                          color: Colors.black.withAlpha(70),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Center(
+                          child: SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -249,7 +363,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         children: [
                           if (rating != null) ...[
                             const Icon(Icons.star, size: 14, color: Colors.amber),
-                            Text(rating.toStringAsFixed(1), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                            Text(rating.toStringAsFixed(1),
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
                           ],
                           if (delivered != null) ...[
                             const SizedBox(width: 8),
@@ -292,9 +407,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             actions: [
               ElevatedButton(
-                onPressed: () {},
+                onPressed: () async {
+                  final current = _profile;
+                  if (current == null) return;
+                  final updated = await Navigator.of(context).push<Map<String, dynamic>>(
+                    MaterialPageRoute(builder: (_) => VehicleInfoScreen(initialProfile: current)),
+                  );
+                  if (!mounted || updated == null) return;
+                  setState(() {
+                    _profile = updated;
+                  });
+                },
                 style: ElevatedButton.styleFrom(backgroundColor: BiTasiColors.primaryRed),
-                child: const Text('Araç Ekle'),
+                child: const Text('Düzenle'),
               ),
             ],
           ),
@@ -335,7 +460,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   await Navigator.of(context).push(
                     MaterialPageRoute<void>(builder: (_) => const NotificationsSettingsScreen()),
                   );
-                  // Reload the persisted value when coming back.
                   final enabled = await appSettings.getNotificationsEnabled();
                   if (!mounted) return;
                   setState(() => _notificationsEnabled = enabled);
@@ -348,6 +472,43 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 onTap: () {
                   Navigator.of(context).push(
                     MaterialPageRoute<void>(builder: (_) => const SecurityScreen()),
+                  );
+                },
+              ),
+              if (isCarrier)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Araç Bilgileri'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () async {
+                    final current = _profile;
+                    if (current == null) return;
+                    final updated = await Navigator.of(context).push<Map<String, dynamic>>(
+                      MaterialPageRoute(builder: (_) => VehicleInfoScreen(initialProfile: current)),
+                    );
+                    if (!mounted || updated == null) return;
+                    setState(() {
+                      _profile = updated;
+                    });
+                  },
+                ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Ödeme / IBAN'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () async {
+                  await Navigator.of(context).push(
+                    MaterialPageRoute<void>(builder: (_) => const PaymentSetupScreen()),
+                  );
+                },
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Destek & SSS'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(builder: (_) => const SupportFaqScreen()),
                   );
                 },
               ),

@@ -19,6 +19,9 @@ class PushNotifications {
   StreamSubscription<RemoteMessage>? _onOpenedSub;
   bool _handlersBound = false;
 
+  Map<String, dynamic>? _pendingOpenData;
+  bool _pendingNavScheduled = false;
+
   Future<void> init() async {
     if (!kEnableFirebasePush) return;
 
@@ -80,11 +83,32 @@ class PushNotifications {
   }
 
   void _handleOpenData(Map<String, dynamic> data) {
-    final type = data['type']?.toString();
-    final listingId = data['listingId']?.toString();
-    // final deliveryId = data['deliveryId']?.toString(); 
+    // When the app is launched from a terminated state (especially via a local
+    // notification tap), navigator may not be ready yet. Defer routing until
+    // after the first frame.
+    if (appNavigatorKey.currentState == null) {
+      _pendingOpenData = Map<String, dynamic>.from(data);
+      if (!_pendingNavScheduled) {
+        _pendingNavScheduled = true;
+        m.WidgetsBinding.instance.addPostFrameCallback((_) {
+          _pendingNavScheduled = false;
+          final pending = _pendingOpenData;
+          _pendingOpenData = null;
+          if (pending != null) {
+            _handleOpenData(pending);
+          }
+        });
+      }
+      return;
+    }
 
-    if (type == 'offer' && listingId != null && listingId.isNotEmpty) {
+    final type = data['type']?.toString();
+    final normalizedType = type?.trim().toLowerCase();
+    final listingId = data['listingId']?.toString();
+    final deliveryId = data['deliveryId']?.toString();
+    final messageId = data['messageId']?.toString();
+
+    if (normalizedType == 'offer' && listingId != null && listingId.isNotEmpty) {
       // Teklif geldiğinde "Kargolarım" sekmesine (index 1) ve detayına git
       appNavigatorKey.currentState?.pushAndRemoveUntil(
         m.MaterialPageRoute<void>(
@@ -98,7 +122,24 @@ class PushNotifications {
       return;
     }
     
-    if (type == 'delivery_status' || type == 'delivery') {
+    if (normalizedType == 'offer_accepted') {
+      // Teklif kabul edildi -> Taşıyıcı/Teslimatlar (index 1)
+      appNavigatorKey.currentState?.pushAndRemoveUntil(
+        m.MaterialPageRoute<void>(
+          builder: (_) => const MainWrapper(initialIndex: 1),
+        ),
+        (route) => false,
+      );
+      return;
+    }
+
+    final isDeliveryEvent =
+        normalizedType == 'delivery_status' ||
+        normalizedType == 'delivery' ||
+        (normalizedType != null && normalizedType.startsWith('delivery_')) ||
+        (deliveryId != null && deliveryId.isNotEmpty);
+
+    if (isDeliveryEvent) {
       // Teslimat güncellemesi (Taşımalarım veya Kargolarım) -> Index 1
       appNavigatorKey.currentState?.pushAndRemoveUntil(
         m.MaterialPageRoute<void>(
@@ -109,7 +150,11 @@ class PushNotifications {
       return;
     }
 
-    if (type == 'message') {
+    final looksLikeMessage =
+        normalizedType == 'message' ||
+        (messageId != null && messageId.isNotEmpty && listingId != null && listingId.isNotEmpty);
+
+    if (looksLikeMessage) {
       // Sohbet -> Index 2 (Mesajlar)
       appNavigatorKey.currentState?.pushAndRemoveUntil(
         m.MaterialPageRoute<void>(

@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
-import '../models/delivery_status.dart';
-import '../services/api_client.dart';
-import 'live_tracking_screen.dart';
-import 'offer_amount_screen.dart';
-import '../theme/bitasi_theme.dart';
+import '../../models/delivery_status.dart';
+import '../../services/api_client.dart';
+import '../../theme/bitasi_theme.dart';
+import '../live_tracking_screen.dart';
+import '../offer_amount_screen.dart';
 
 /// Anlaşma detay ekranı:
 /// - Paket özeti

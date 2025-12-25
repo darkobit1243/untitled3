@@ -22,7 +22,10 @@ class ApiClient {
   String get _baseUrl => const String.fromEnvironment('API_BASE_URL', defaultValue: _defaultBaseUrl);
 
   String? _jwt;
+  String? _refreshToken;
   String? _userId;
+    static const String _authTokenKey = 'auth_token';
+    static const String _refreshTokenKey = 'refresh_token';
   IO.Socket? _socket;
   final List<void Function(bool)> _socketStatusListeners = [];
 
@@ -41,7 +44,7 @@ class ApiClient {
   Future<String?> getAuthToken() async {
     if (_jwt != null) return _jwt;
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('auth_token');
+    return prefs.getString(_authTokenKey);
   }
 
   void _log(String message) {
@@ -68,6 +71,16 @@ class ApiClient {
     _persistToken(token);
   }
 
+  void setSession({required String token, String? refreshToken}) {
+    setToken(token);
+    final rt = refreshToken?.trim();
+    if (rt != null && rt.isNotEmpty) {
+      _refreshToken = rt;
+      // ignore: unawaited_futures
+      _persistRefreshToken(rt);
+    }
+  }
+
   Future<void> registerFcmToken(String? token) async {
     if (_jwt == null) {
       final restored = await tryRestoreSession();
@@ -85,7 +98,12 @@ class ApiClient {
 
   Future<void> _persistToken(String token) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('auth_token', token);
+    await prefs.setString(_authTokenKey, token);
+  }
+
+  Future<void> _persistRefreshToken(String token) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_refreshTokenKey, token);
   }
 
   Future<String?> getRole() async {
@@ -95,6 +113,7 @@ class ApiClient {
 
   Future<void> clearToken() async {
     _jwt = null;
+    _refreshToken = null;
     _userId = null;
     try {
       _socket?.disconnect();
@@ -102,8 +121,36 @@ class ApiClient {
     } catch (_) {}
     _socket = null;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('auth_token');
+    await prefs.remove(_authTokenKey);
+    await prefs.remove(_refreshTokenKey);
     await prefs.remove('preferred_role');
+  }
+
+  Future<bool> refreshSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    final rt = (_refreshToken ?? prefs.getString(_refreshTokenKey))?.trim();
+    if (rt == null || rt.isEmpty) return false;
+
+    final resp = await _client.post(
+      Uri.parse('$_baseUrl/auth/refresh'),
+      headers: _publicHeaders(),
+      body: jsonEncode(<String, dynamic>{'refreshToken': rt}),
+    );
+    if (resp.statusCode >= 400) {
+      await clearToken();
+      return false;
+    }
+
+    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    final token = (data['token'] as String?)?.trim();
+    final newRt = (data['refreshToken'] as String?)?.trim();
+    if (token == null || token.isEmpty) {
+      await clearToken();
+      return false;
+    }
+
+    setSession(token: token, refreshToken: newRt);
+    return true;
   }
 
   Map<String, String> _headers() {
@@ -114,6 +161,12 @@ class ApiClient {
       headers['Authorization'] = 'Bearer $_jwt';
     }
     return headers;
+  }
+
+  Map<String, String> _publicHeaders() {
+    return const <String, String>{
+      'Content-Type': 'application/json',
+    };
   }
 
   // AUTH
@@ -144,8 +197,9 @@ class ApiClient {
     // Backend artık register'da token + role dönüyor
     final data = jsonDecode(resp.body) as Map<String, dynamic>;
     final token = data['token'] as String;
+    final refreshToken = data['refreshToken'] as String?;
     final r = (data['role'] as String?) ?? role;
-    setToken(token);
+    setSession(token: token, refreshToken: refreshToken);
     await setPreferredRole(r);
   }
 
@@ -193,8 +247,9 @@ class ApiClient {
 
     final data = jsonDecode(resp.body) as Map<String, dynamic>;
     final token = data['token'] as String;
+    final refreshToken = data['refreshToken'] as String?;
     final r = (data['role'] as String?) ?? role;
-    setToken(token);
+    setSession(token: token, refreshToken: refreshToken);
     await setPreferredRole(r);
   }
 
@@ -205,9 +260,10 @@ class ApiClient {
       body: jsonEncode({'email': email, 'password': password}),
     );
 
-    // Debug için response'u logla (sadece geliştirme sırasında işine yarar)
-    // ignore: avoid_print
-    print('LOGIN RESPONSE: ${resp.statusCode} ${resp.body}');
+    if (enableLogging || kDebugMode) {
+      // ignore: avoid_print
+      print('LOGIN RESPONSE: ${resp.statusCode} ${resp.body}');
+    }
 
     if (resp.statusCode >= 400) {
       throw Exception('Giriş başarısız: ${resp.statusCode} - ${resp.body}');
@@ -215,8 +271,9 @@ class ApiClient {
 
     final data = jsonDecode(resp.body) as Map<String, dynamic>;
     final token = data['token'] as String;
+    final refreshToken = data['refreshToken'] as String?;
     final r = data['role'] as String?; // sender|carrier
-    setToken(token);
+    setSession(token: token, refreshToken: refreshToken);
     if (r != null) {
       await setPreferredRole(r);
     } else {
@@ -231,11 +288,41 @@ class ApiClient {
     return token;
   }
 
+  Future<Map<String, dynamic>> requestPasswordReset(String email) async {
+    final resp = await _client.post(
+      Uri.parse('$_baseUrl/auth/forgot-password'),
+      headers: _publicHeaders(),
+      body: jsonEncode({'email': email}),
+    );
+    if (resp.statusCode >= 400) {
+      throw Exception('Şifre sıfırlama isteği başarısız: ${resp.body}');
+    }
+    final decoded = jsonDecode(resp.body);
+    if (decoded is Map<String, dynamic>) return decoded;
+    return <String, dynamic>{'ok': true};
+  }
+
+  Future<void> resetPassword({
+    required String email,
+    required String code,
+    required String newPassword,
+  }) async {
+    final resp = await _client.post(
+      Uri.parse('$_baseUrl/auth/reset-password'),
+      headers: _publicHeaders(),
+      body: jsonEncode({'email': email, 'code': code, 'newPassword': newPassword}),
+    );
+    if (resp.statusCode >= 400) {
+      throw Exception('Şifre güncellenemedi: ${resp.body}');
+    }
+  }
+
   Future<bool> tryRestoreSession() async {
     final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('auth_token');
+    final token = prefs.getString(_authTokenKey);
     if (token == null) return false;
     _jwt = token;
+    _refreshToken = prefs.getString(_refreshTokenKey);
     try {
       await _getUserIdAndRole();
       return true;
@@ -245,8 +332,15 @@ class ApiClient {
       final msg = e.toString();
       final looksUnauthorized = msg.contains('401') || msg.contains('403') || msg.contains('Unauthorized');
       if (looksUnauthorized) {
-        await clearToken();
-        return false;
+        final refreshed = await refreshSession();
+        if (!refreshed) return false;
+        try {
+          await _getUserIdAndRole();
+          return true;
+        } catch (_) {
+          await clearToken();
+          return false;
+        }
       }
 
       // Keep the stored token; app may be offline or backend unreachable.
@@ -286,6 +380,76 @@ class ApiClient {
     );
     if (resp.statusCode >= 400) {
       throw Exception('Profil bilgisi alınamadı: ${resp.body}');
+    }
+    return jsonDecode(resp.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> updateMyProfile({
+    String? avatarUrl,
+    Map<String, dynamic>? profile,
+  }) async {
+    final payload = <String, dynamic>{};
+    if (avatarUrl != null) {
+      payload['avatarUrl'] = avatarUrl;
+    }
+
+    if (profile != null) {
+      for (final entry in profile.entries) {
+        final key = entry.key;
+        final value = entry.value;
+        if (value == null) {
+          payload[key] = null;
+          continue;
+        }
+        if (value is String) {
+          payload[key] = value.trim();
+          continue;
+        }
+        payload[key] = value;
+      }
+    }
+
+    final resp = await _client.patch(
+      Uri.parse('$_baseUrl/auth/me'),
+      headers: _headers(),
+      body: jsonEncode(payload),
+    );
+    if (resp.statusCode >= 400) {
+      throw Exception('Profil güncellenemedi: ${resp.body}');
+    }
+    return jsonDecode(resp.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> addDeliveryProofPhoto(
+    String deliveryId, {
+    required String photoKey,
+  }) async {
+    final key = photoKey.trim();
+    final resp = await _client.post(
+      Uri.parse('$_baseUrl/deliveries/$deliveryId/proof'),
+      headers: _headers(),
+      body: jsonEncode(<String, dynamic>{'photoKey': key}),
+    );
+    if (resp.statusCode >= 400) {
+      throw Exception('Kanit fotoğrafı eklenemedi: ${resp.body}');
+    }
+    return jsonDecode(resp.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> disputeDelivery(
+    String deliveryId, {
+    String? reason,
+  }) async {
+    final trimmed = reason?.trim();
+    final resp = await _client.post(
+      Uri.parse('$_baseUrl/deliveries/$deliveryId/dispute'),
+      headers: _headers(),
+      body: jsonEncode(<String, dynamic>{
+        if (trimmed != null) 'reason': trimmed,
+      }),
+    );
+    if (resp.statusCode >= 400) {
+      throw Exception('Sorun bildirilemedi: ${resp.body}');
     }
     return jsonDecode(resp.body) as Map<String, dynamic>;
   }
@@ -406,7 +570,7 @@ class ApiClient {
   Future<Map<String, dynamic>> createListing({
     required String title,
     required String description,
-    String? photoDataUrl,
+    required List<String> photos,
     required double weight,
     String? receiverPhone,
     double length = 0,
@@ -426,7 +590,7 @@ class ApiClient {
       body: jsonEncode({
         'title': title,
         'description': description,
-        'photos': photoDataUrl == null ? <String>[] : <String>[photoDataUrl],
+        'photos': photos,
         'weight': weight,
         'dimensions': {
           'length': length,
@@ -444,6 +608,43 @@ class ApiClient {
       throw Exception('İlan oluşturulamadı: ${resp.body}');
     }
     return jsonDecode(resp.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> presignUpload({
+    required String contentType,
+    String prefix = 'uploads',
+  }) async {
+    await _getUserIdAndRole();
+
+    final uri = Uri.parse('$_baseUrl/uploads/presign').replace(
+      queryParameters: <String, String>{
+        'contentType': contentType,
+        'prefix': prefix,
+      },
+    );
+
+    final resp = await _client.get(uri, headers: _headers());
+    if (resp.statusCode >= 400) {
+      throw Exception('Upload URL alınamadı: ${resp.body}');
+    }
+    return jsonDecode(resp.body) as Map<String, dynamic>;
+  }
+
+  Future<void> uploadToPresignedUrl({
+    required String url,
+    required Uint8List bytes,
+    required Map<String, String> headers,
+  }) async {
+    final resp = await _client.put(
+      Uri.parse(url),
+      headers: headers,
+      body: bytes,
+    );
+
+    // S3 PutObject commonly returns 200 or 204.
+    if (resp.statusCode != 200 && resp.statusCode != 204) {
+      throw Exception('S3 upload başarısız: status=${resp.statusCode} body=${resp.body}');
+    }
   }
 
   Future<Map<String, dynamic>> createOffer({
@@ -523,6 +724,39 @@ class ApiClient {
       throw Exception('Teklifler alınamadı: ${resp.body}');
     }
     return jsonDecode(resp.body) as List<dynamic>;
+  }
+
+  Future<Map<String, dynamic>> fetchOffersForListingPaged(
+    String listingId, {
+    int page = 1,
+    int limit = 20,
+  }) async {
+    final uri = Uri.parse('$_baseUrl/offers/listing/$listingId').replace(
+      queryParameters: {
+        'page': '${page < 1 ? 1 : page}',
+        'limit': '${limit < 1 ? 20 : limit}',
+      },
+    );
+
+    final resp = await _client.get(uri, headers: _headers());
+    if (resp.statusCode >= 400) {
+      throw Exception('Teklifler alınamadı: ${resp.body}');
+    }
+
+    final decoded = jsonDecode(resp.body);
+    if (decoded is Map<String, dynamic>) return decoded;
+    if (decoded is List<dynamic>) {
+      return {
+        'data': decoded,
+        'meta': {
+          'total': decoded.length,
+          'page': 1,
+          'limit': decoded.length,
+          'lastPage': 1,
+        },
+      };
+    }
+    throw Exception('Beklenmeyen offers response tipi');
   }
 
   Future<List<dynamic>> fetchOffersByOwner() async {
@@ -731,13 +965,23 @@ class ApiClient {
 
   Future<Map<String, dynamic>> updateDeliveryLocation(String deliveryId, {required double lat, required double lng}) async {
     await _getUserIdAndRole();
-    final resp = await _client.post(
-      Uri.parse('$_baseUrl/deliveries/$deliveryId/location'),
-      headers: _headers(),
-      body: jsonEncode(<String, dynamic>{'lat': lat, 'lng': lng}),
-    );
+    Future<http.Response> doPost() {
+      return _client.post(
+        Uri.parse('$_baseUrl/deliveries/$deliveryId/location'),
+        headers: _headers(),
+        body: jsonEncode(<String, dynamic>{'lat': lat, 'lng': lng}),
+      );
+    }
+
+    var resp = await doPost();
+    if (resp.statusCode == 401) {
+      final refreshed = await refreshSession();
+      if (refreshed) {
+        resp = await doPost();
+      }
+    }
     if (resp.statusCode >= 400) {
-      throw Exception('Konum güncelleme başarısız: ${resp.body}');
+      throw Exception('Konum güncelleme başarısız: ${resp.statusCode} - ${resp.body}');
     }
     return jsonDecode(resp.body) as Map<String, dynamic>;
   }

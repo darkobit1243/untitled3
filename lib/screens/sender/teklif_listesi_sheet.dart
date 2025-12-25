@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../../services/api_client.dart';
-import '../../theme/bitasi_theme.dart';
+import '../../utils/common/signed_url_cache.dart';
+import '../../widgets/sender/offers/offer_card.dart';
+import '../../widgets/sender/offers/offer_empty_state.dart';
+import '../../widgets/sender/offers/offer_list_header.dart';
+import '../../widgets/sender/offers/offer_profile_sheet.dart';
 
 class TeklifListesiSheet extends StatefulWidget {
   const TeklifListesiSheet({
@@ -18,26 +22,147 @@ class TeklifListesiSheet extends StatefulWidget {
 }
 
 class _TeklifListesiSheetState extends State<TeklifListesiSheet> {
-  late Future<List<dynamic>> _future;
+  bool _loading = true;
+  bool _loadingMore = false;
+  bool _hasMore = true;
+  int _page = 1;
+  static const int _limit = 20;
+  int? _serverTotal;
+  List<Map<String, dynamic>> _offers = [];
+  late final ScrollController _scrollController;
   bool _actionLoading = false;
 
   @override
   void initState() {
     super.initState();
-    _future = apiClient.fetchOffersForListing(widget.listingId);
+    _scrollController = ScrollController()..addListener(_onScroll);
+    _load(reset: true);
   }
 
-  Future<void> _refresh() async {
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_hasMore || _loadingMore || _loading) return;
+    if (!_scrollController.hasClients) return;
+    final max = _scrollController.position.maxScrollExtent;
+    final current = _scrollController.position.pixels;
+    if (current >= max - 240) {
+      // ignore: unawaited_futures
+      _loadMore();
+    }
+  }
+
+  Future<void> _load({required bool reset}) async {
     setState(() {
-      _future = apiClient.fetchOffersForListing(widget.listingId);
+      _loading = true;
+      if (reset) {
+        _page = 1;
+        _hasMore = true;
+        _serverTotal = null;
+        _offers = [];
+      }
     });
+
+    try {
+      final res = await apiClient.fetchOffersForListingPaged(
+        widget.listingId,
+        page: _page,
+        limit: _limit,
+      );
+
+      final dataRaw = res['data'];
+      final meta = (res['meta'] is Map) ? (res['meta'] as Map) : null;
+      final total = meta?['total'];
+      final lastPage = meta?['lastPage'];
+      final pageNum = meta?['page'];
+
+      final data = (dataRaw is List)
+          ? dataRaw.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList()
+          : <Map<String, dynamic>>[];
+
+      setState(() {
+        _offers = data;
+        _serverTotal = total is num ? total.toInt() : _serverTotal;
+        final resolvedLastPage = lastPage is num ? lastPage.toInt() : 1;
+        final resolvedPage = pageNum is num ? pageNum.toInt() : 1;
+        _hasMore = resolvedPage < resolvedLastPage;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Teklifler alınamadı: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadMore() async {
+    if (!_hasMore || _loadingMore || _loading) return;
+    setState(() {
+      _loadingMore = true;
+    });
+    try {
+      final nextPage = _page + 1;
+      final res = await apiClient.fetchOffersForListingPaged(
+        widget.listingId,
+        page: nextPage,
+        limit: _limit,
+      );
+
+      final dataRaw = res['data'];
+      final meta = (res['meta'] is Map) ? (res['meta'] as Map) : null;
+      final total = meta?['total'];
+      final lastPage = meta?['lastPage'];
+      final pageNum = meta?['page'];
+
+      final newItems = (dataRaw is List)
+          ? dataRaw.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList()
+          : <Map<String, dynamic>>[];
+
+      setState(() {
+        _page = nextPage;
+        _offers = [..._offers, ...newItems];
+        _serverTotal = total is num ? total.toInt() : _serverTotal;
+        final resolvedLastPage = lastPage is num ? lastPage.toInt() : nextPage;
+        final resolvedPage = pageNum is num ? pageNum.toInt() : nextPage;
+        _hasMore = resolvedPage < resolvedLastPage;
+      });
+    } catch (_) {
+      // ignore load-more errors
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loadingMore = false;
+        });
+      }
+    }
   }
 
   Future<void> _handleAccept(String offerId) async {
+    final previous = _offers.map((e) => Map<String, dynamic>.from(e)).toList();
     setState(() => _actionLoading = true);
     try {
+      setState(() {
+        _offers = _offers
+            .map((o) => {
+                  ...o,
+                  'status': (o['id']?.toString() == offerId) ? 'accepted' : 'rejected',
+                })
+            .toList();
+      });
       await apiClient.acceptOffer(offerId);
-      await _refresh();
+      // ignore: unawaited_futures
+      _load(reset: true);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Teklif kabul edildi')),
@@ -45,6 +170,9 @@ class _TeklifListesiSheetState extends State<TeklifListesiSheet> {
       }
     } catch (e) {
       if (mounted) {
+        setState(() {
+          _offers = previous;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Kabul edilemedi: $e')),
         );
@@ -57,10 +185,17 @@ class _TeklifListesiSheetState extends State<TeklifListesiSheet> {
   }
 
   Future<void> _handleReject(String offerId) async {
+    final previous = _offers.map((e) => Map<String, dynamic>.from(e)).toList();
     setState(() => _actionLoading = true);
     try {
+      setState(() {
+        _offers = _offers
+            .map((o) => o['id']?.toString() == offerId ? {...o, 'status': 'rejected'} : o)
+            .toList();
+      });
       await apiClient.rejectOffer(offerId);
-      await _refresh();
+      // ignore: unawaited_futures
+      _load(reset: true);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Teklif reddedildi')),
@@ -68,6 +203,9 @@ class _TeklifListesiSheetState extends State<TeklifListesiSheet> {
       }
     } catch (e) {
       if (mounted) {
+        setState(() {
+          _offers = previous;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Reddedilemedi: $e')),
         );
@@ -83,62 +221,30 @@ class _TeklifListesiSheetState extends State<TeklifListesiSheet> {
   Widget build(BuildContext context) {
     return FractionallySizedBox(
       heightFactor: 0.65, // biraz daha ferah yarım ekran
-      child: FutureBuilder<List<dynamic>>(
-        future: _future,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
+      child: Builder(
+        builder: (context) {
+          final totalCount = _serverTotal ?? _offers.length;
+          if (_loading && _offers.isEmpty) {
             return const Padding(
               padding: EdgeInsets.all(24),
               child: Center(child: CircularProgressIndicator()),
             );
           }
-          if (snapshot.hasError) {
-            return Padding(
-              padding: const EdgeInsets.all(24),
-              child: Text('Teklifler alınamadı: ${snapshot.error}'),
-            );
-          }
-
-          final offers = snapshot.data ?? [];
-          if (offers.isEmpty) {
-            return const Padding(
-              padding: EdgeInsets.all(24),
-              child: Text('Bu ilana henüz teklif gelmemiş.'),
-            );
+          if (!_loading && _offers.isEmpty) {
+            return const OfferEmptyState();
           }
 
           return Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 18),
             child: Column(
               mainAxisSize: MainAxisSize.max,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'Teklifler - ${widget.title}',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.grey.shade300),
-                      ),
-                      child: Text(
-                        '${offers.length} teklif',
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                  ],
+                OfferListHeader(
+                  title: 'Teklifler',
+                  subtitle: widget.title,
+                  countLabel: _serverTotal != null ? '${_offers.length}/$totalCount' : '$totalCount',
+                  onClose: () => Navigator.pop(context),
                 ),
                 const SizedBox(height: 10),
                 if (_actionLoading)
@@ -146,172 +252,61 @@ class _TeklifListesiSheetState extends State<TeklifListesiSheet> {
                 if (_actionLoading) const SizedBox(height: 8),
                 Expanded(
                   child: ListView.separated(
-                    itemCount: offers.length,
+                    controller: _scrollController,
+                    itemCount: _offers.length + (_loadingMore ? 1 : 0),
                     separatorBuilder: (_, __) => const SizedBox(height: 10),
                     itemBuilder: (context, index) {
-                      final offer = offers[index] as Map<String, dynamic>;
+                      if (index >= _offers.length) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 8),
+                          child: Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))),
+                        );
+                      }
+
+                      final offer = _offers[index];
                       final amount = offer['amount']?.toString() ?? '-';
                       final status = offer['status']?.toString() ?? 'pending';
-                      final userLabel = offer['proposerName']?.toString() ?? offer['proposerId']?.toString() ?? 'Taşıyıcı';
-                      final avatar = offer['proposerAvatar']?.toString();
+                      final userLabel = offer['proposerName']?.toString() ??
+                          offer['proposerId']?.toString() ??
+                          'Taşıyıcı';
+                      final avatarKey = offer['proposerAvatarKey']?.toString();
+                      final avatar = signedUrlCache.resolve(
+                        key: avatarKey,
+                        signedUrl: offer['proposerAvatar']?.toString(),
+                      );
                       final rating = (offer['proposerRating'] as num?)?.toDouble();
                       final delivered = (offer['proposerDelivered'] as num?)?.toInt();
                       final proposerId = offer['proposerId']?.toString();
                       final createdAt = offer['createdAt']?.toString() ?? '';
                       final offerId = offer['id']?.toString() ?? '';
 
-                      Color statusColor;
-                      String statusText;
-                      switch (status) {
-                        case 'accepted':
-                          statusColor = BiTasiColors.successGreen;
-                          statusText = 'Kabul edildi';
-                          break;
-                        case 'rejected':
-                          statusColor = BiTasiColors.errorRed;
-                          statusText = 'Reddedildi';
-                          break;
-                        default:
-                          statusColor = BiTasiColors.warningOrange;
-                          statusText = 'Bekliyor';
-                      }
-
-                      final isPending = status == 'pending';
-
-                      return AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        curve: Curves.easeOut,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withAlpha(10),
-                              blurRadius: 10,
-                              offset: const Offset(0, 6),
-                            ),
-                          ],
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  CircleAvatar(
-                                    backgroundColor: BiTasiColors.primaryBlue.withAlpha(31),
-                                    backgroundImage: avatar != null ? NetworkImage(avatar) : null,
-                                    child: avatar == null
-                                        ? const Icon(Icons.local_shipping, color: BiTasiColors.primaryBlue)
-                                        : null,
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          '$amount TL',
-                                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text('Kullanıcı: $userLabel', style: const TextStyle(fontSize: 12)),
-                                      ],
-                                    ),
-                                  ),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: statusColor.withAlpha(31),
-                                      borderRadius: BorderRadius.circular(999),
-                                    ),
-                                    child: Text(
-                                      statusText,
-                                      style: TextStyle(
-                                        color: statusColor,
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-                              Row(
-                                children: [
-                                  if (rating != null) ...[
-                                    const Icon(Icons.star, size: 12, color: Colors.amber),
-                                    Text(
-                                      rating.toStringAsFixed(1),
-                                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
-                                    ),
-                                  ],
-                                  if (delivered != null) ...[
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      '$delivered teslimat',
-                                      style: const TextStyle(fontSize: 11, color: Colors.grey),
-                                    ),
-                                  ],
-                                  const Spacer(),
-                                  if (proposerId != null)
-                                    TextButton(
-                                      onPressed: () async {
-                                        try {
-                                          final data = await apiClient.fetchUserById(proposerId);
-                                          if (context.mounted) {
-                                            _showProfileSheet(context, data);
-                                          }
-                                        } catch (e) {
-                                          if (context.mounted) {
-                                            ScaffoldMessenger.of(context).showSnackBar(
-                                              SnackBar(content: Text('Profil alınamadı: $e')),
-                                            );
-                                          }
-                                        }
-                                      },
-                                      child: const Text('Profili Gör'),
-                                    ),
-                                ],
-                              ),
-                              if (createdAt.isNotEmpty)
-                                Text(
-                                  createdAt,
-                                  style: const TextStyle(fontSize: 11, color: Colors.grey),
-                                ),
-                              if (isPending) ...[
-                                const SizedBox(height: 12),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: OutlinedButton(
-                                        onPressed: _actionLoading ? null : () => _handleReject(offerId),
-                                        style: OutlinedButton.styleFrom(
-                                          foregroundColor: BiTasiColors.errorRed,
-                                          side: const BorderSide(color: BiTasiColors.errorRed),
-                                        ),
-                                        child: const Text('Reddet'),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: ElevatedButton(
-                                        onPressed: _actionLoading ? null : () => _handleAccept(offerId),
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: BiTasiColors.successGreen,
-                                          foregroundColor: Colors.white,
-                                        ),
-                                        child: const Text('Kabul Et'),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
+                      return OfferCard(
+                        amountLabel: '$amount TL',
+                        status: status,
+                        userLabel: userLabel,
+                        avatarUrl: (avatar != null && avatar.isNotEmpty) ? avatar : null,
+                        rating: rating,
+                        delivered: delivered,
+                        createdAtLabel: createdAt,
+                        actionLoading: _actionLoading,
+                        onReject: () => _handleReject(offerId),
+                        onAccept: () => _handleAccept(offerId),
+                        onViewProfile: proposerId == null
+                            ? null
+                            : () async {
+                                try {
+                                  final data = await apiClient.fetchUserById(proposerId);
+                                  if (context.mounted) {
+                                    _showProfileSheet(context, data);
+                                  }
+                                } catch (e) {
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text('Profil alınamadı: $e')),
+                                    );
+                                  }
+                                }
+                              },
                       );
                     },
                   ),
@@ -325,63 +320,32 @@ class _TeklifListesiSheetState extends State<TeklifListesiSheet> {
   }
 
   void _showProfileSheet(BuildContext context, Map<String, dynamic> data) {
+    final avatarUrl = signedUrlCache.resolve(
+      key: data['avatarKey']?.toString(),
+      signedUrl: data['avatarUrl']?.toString(),
+    );
+    final name = data['fullName']?.toString() ?? data['email']?.toString() ?? 'Kullanıcı';
+    final role = data['role']?.toString();
+    final rating = (data['rating'] as num?)?.toDouble();
+    final delivered = (data['deliveredCount'] as num?)?.toInt();
+    final isVerified = data['isVerified'] == true;
+    final isActive = data['isActive'] != false;
+
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
       ),
-      builder: (_) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                CircleAvatar(
-                  radius: 20,
-                  backgroundColor: Colors.grey.shade200,
-                  backgroundImage: (data['avatarUrl'] as String?) != null ? NetworkImage(data['avatarUrl'] as String) : null,
-                  child: data['avatarUrl'] == null
-                      ? Text(
-                          (data['fullName']?.toString().isNotEmpty ?? false)
-                              ? data['fullName'].toString().characters.first.toUpperCase()
-                              : 'U',
-                          style: const TextStyle(fontWeight: FontWeight.w700),
-                        )
-                      : null,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        data['fullName']?.toString() ?? data['email']?.toString() ?? 'Kullanıcı',
-                        style: const TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                      Row(
-                        children: [
-                          if (data['rating'] != null) ...[
-                            const Icon(Icons.star, size: 14, color: Colors.amber),
-                            Text(data['rating'].toString(), style: const TextStyle(fontSize: 12)),
-                          ],
-                          if (data['deliveredCount'] != null) ...[
-                            const SizedBox(width: 6),
-                            Text('${data['deliveredCount']} teslimat', style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                          ],
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            if (data['address'] != null) Text('Adres: ${data['address']}'),
-            if (data['phone'] != null) Text('Telefon: ${data['phone']}'),
-          ],
-        ),
+      builder: (_) => OfferProfileSheet(
+        avatarUrl: avatarUrl,
+        name: name,
+        role: role,
+        rating: rating,
+        delivered: delivered,
+        isVerified: isVerified,
+        isActive: isActive,
+        phone: data['phone']?.toString(),
+        address: data['address']?.toString(),
       ),
     );
   }

@@ -6,7 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../services/api_client.dart';
 import '../../theme/bitasi_theme.dart';
-import '../../utils/image_utils.dart';
+import '../../utils/carrier/image_utils.dart';
 import '../live_tracking_screen.dart';
 
 class CarrierDeliveryDetailsScreen extends StatefulWidget {

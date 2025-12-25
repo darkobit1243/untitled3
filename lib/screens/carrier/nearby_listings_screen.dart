@@ -218,15 +218,6 @@ class _NearbyListingsScreenState extends State<NearbyListingsScreen> {
   Widget _buildListingCard(Map<String, dynamic> item) {
     final title = item['title'] ?? 'Başlıksız Yük';
     final weight = item['weight']?.toString() ?? '0';
-    final dist = item['distance'] != null 
-        ? (item['distance'] as num).toStringAsFixed(1) 
-        : null; // Backend returns distance in meters if ordered, but REST usually just list. 
-                // Since we use ST_DWithin, order is by distance.
-    
-    // Calculate naive distance if not provided or just rely on current local calc? 
-    // Usually backend doesn't return computed 'distance' field unless explicitly selected.
-    // We will just show basic info.
-
     final pickup = item['pickup_location'];
     // final dropoff = item['dropoff_location'];
 
@@ -399,18 +390,22 @@ class _DetailSheet extends StatelessWidget {
   }
 
   void _openOfferScreen(BuildContext context, String id, String title) {
-     Navigator.push(
-       context,
+     final navigator = Navigator.of(context);
+     final messenger = ScaffoldMessenger.of(context);
+
+     navigator
+         .push(
        MaterialPageRoute(builder: (_) => OfferAmountScreen(title: title)),
-     ).then((val) {
+     )
+         .then((val) {
        if (val != null) {
           // send offer
           final amt = double.tryParse(val.toString().replaceAll(',', '.'));
           if (amt != null) {
              apiClient.createOffer(listingId: id, amount: amt).then((_) {
-               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Teklif gönderildi!')));
+               messenger.showSnackBar(const SnackBar(content: Text('Teklif gönderildi!')));
              }).catchError((e) {
-               ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Hata: $e')));
+               messenger.showSnackBar(SnackBar(content: Text('Hata: $e')));
              });
           }
        }
